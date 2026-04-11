@@ -609,13 +609,13 @@ class Program
                 // 3. 检查游戏进程是否运行
                 bool gameRunning = IsAnyGameRunning();
 
-                if (!bgiRunning && _cachedCommand.Length > 0)
+                if (!bgiRunning)
                 {
-                    // BGI 未运行，重启
+                    // BGI 未运行，重启（无论是否有游戏运行）
                     Log("WARN", "检测到 BGI.exe 未运行");
                     RestartBgiProcess("进程未运行");
                 }
-                else if (!gameRunning && bgiRunning)
+                else if (!gameRunning)
                 {
                     // 游戏已退出，终止 BGI 后重启
                     Log("WARN", "检测到游戏进程退出");
