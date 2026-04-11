@@ -17,6 +17,7 @@ class Program
     private const string BgiExeName = "BGI.exe";
     private const string BetterGiExeName = "BetterGI.exe";
     private const string LogFilePrefix = "BGI_guard";
+    private static string ConfigFilePath => Path.Combine(_exeDirectory, "BGIguard_config.ini");
 
     // ============== 全局变量 ==============
     private static string _exeDirectory = null!;
@@ -37,19 +38,23 @@ class Program
     {
         _exeDirectory = AppDomain.CurrentDomain.BaseDirectory;
 
+        // 处理命令行参数
+        if (args.Length > 0)
+        {
+            HandleCommandLine(args);
+            return;
+        }
+
         // 加载配置
-        var (memoryPercent, monitorIntervalSeconds, _) = SettingsForm.LoadConfig();
+        var (memoryPercent, monitorIntervalSeconds, _) = LoadConfig();
         _monitorIntervalMs = monitorIntervalSeconds * 1000;
         _memoryPercent = memoryPercent;
 
-        // 无参数启动时显示设置窗口
-        if (args.Length == 0)
+        // 无参数启动时显示命令行设置提示
+        var config = LoadConfig();
+        if (!config.skipSetup)
         {
-            // 显示设置窗口
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new SettingsForm());
-            return;
+            ShowCommandLineSetup();
         }
 
         // 记录启动日志
@@ -73,6 +78,280 @@ class Program
 
         // 进入守护主循环
         RunGuardLoop();
+    }
+
+    /// <summary>
+    /// 处理命令行参数
+    /// </summary>
+    private static void HandleCommandLine(string[] args)
+    {
+        string command = args[0].ToLower();
+
+        switch (command)
+        {
+            case "set":
+            case "config":
+                // 设置配置
+                if (args.Length >= 3)
+                {
+                    if (args[1].ToLower() == "memory")
+                    {
+                        if (int.TryParse(args[2], out int mem) && mem > 0 && mem <= 100)
+                        {
+                            SaveConfig(mem, LoadConfig().monitorIntervalSeconds);
+                            Console.WriteLine($"内存阈值已设置为 {mem}%");
+                        }
+                        else
+                        {
+                            Console.WriteLine("错误: 内存阈值应在 1-100 之间");
+                        }
+                    }
+                    else if (args[1].ToLower() == "interval")
+                    {
+                        if (int.TryParse(args[2], out int interval) && interval > 0)
+                        {
+                            var currentConfig = LoadConfig();
+                            SaveConfig(currentConfig.memoryPercent, interval, currentConfig.skipSetup);
+                            Console.WriteLine($"监控间隔已设置为 {interval} 秒");
+                        }
+                        else
+                        {
+                            Console.WriteLine("错误: 监控间隔应大于 0");
+                        }
+                    }
+                    else if (args[1].ToLower() == "skip")
+                    {
+                        var currentConfig = LoadConfig();
+                        bool newSkip = !currentConfig.skipSetup;
+                        SaveConfig(currentConfig.memoryPercent, currentConfig.monitorIntervalSeconds, newSkip);
+                        Console.WriteLine($"跳过设置界面已设置为: {newSkip}");
+                    }
+                    else
+                    {
+                        ShowHelp();
+                    }
+                }
+                else if (args.Length == 2 && args[1].ToLower() == "show")
+                {
+                    // 显示当前配置
+                    var config = LoadConfig();
+                    Console.WriteLine($"当前配置:");
+                    Console.WriteLine($"  内存阈值: {config.memoryPercent}%");
+                    Console.WriteLine($"  监控间隔: {config.monitorIntervalSeconds} 秒");
+                    Console.WriteLine($"  跳过设置: {config.skipSetup}");
+                }
+                else
+                {
+                    ShowHelp();
+                }
+                break;
+
+            case "help":
+            case "?":
+                ShowHelp();
+                break;
+
+            case "reset":
+                // 重置配置
+                if (File.Exists(ConfigFilePath))
+                {
+                    File.Delete(ConfigFilePath);
+                    Console.WriteLine("配置已重置为默认值");
+                }
+                else
+                {
+                    Console.WriteLine("配置已是默认值");
+                }
+                break;
+
+            default:
+                // 正常运行模式，启动守护进程
+                var (memoryPercent, monitorIntervalSeconds, _) = LoadConfig();
+                _monitorIntervalMs = monitorIntervalSeconds * 1000;
+                _memoryPercent = memoryPercent;
+
+                // 记录启动日志
+                Log("INFO", "BGIguard 启动成功");
+
+                // 检查是否需要文件替换
+                CheckAndReplaceFile();
+
+                // 处理单实例保护
+                HandleSingleInstance(args);
+
+                // 缓存启动命令
+                _cachedCommand = string.Join(" ", args);
+                Log("INFO", $"已缓存启动命令: {_cachedCommand}");
+
+                // 启动 BGI.exe
+                StartBgiProcess();
+
+                // 进入守护主循环
+                RunGuardLoop();
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 显示命令行帮助
+    /// </summary>
+    private static void ShowHelp()
+    {
+        Console.WriteLine("BGIguard 命令行工具");
+        Console.WriteLine();
+        Console.WriteLine("用法:");
+        Console.WriteLine("  BGIguard.exe                    启动守护进程（无参数）");
+        Console.WriteLine("  BGIguard.exe set memory <值>     设置内存阈值 (1-100)");
+        Console.WriteLine("  BGIguard.exe set interval <值>  设置监控间隔 (秒)");
+        Console.WriteLine("  BGIguard.exe set skip           设置/取消跳过设置界面");
+        Console.WriteLine("  BGIguard.exe set show           显示当前配置");
+        Console.WriteLine("  BGIguard.exe reset              重置配置为默认值");
+        Console.WriteLine("  BGIguard.exe help               显示帮助");
+        Console.WriteLine();
+        Console.WriteLine("默认值: 内存阈值=80%, 监控间隔=5秒, 跳过设置=否");
+    }
+
+    /// <summary>
+    /// 显示命令行设置界面
+    /// </summary>
+    private static void ShowCommandLineSetup()
+    {
+        Console.WriteLine("=== BGIguard 设置 ===");
+        Console.WriteLine();
+
+        var config = LoadConfig();
+        Console.WriteLine($"当前配置:");
+        Console.WriteLine($"  内存阈值: {config.memoryPercent}%");
+        Console.WriteLine($"  监控间隔: {config.monitorIntervalSeconds} 秒");
+        Console.WriteLine();
+
+        // 提示用户是否要修改配置
+        Console.WriteLine("请选择操作:");
+        Console.WriteLine("  1. 修改内存阈值");
+        Console.WriteLine("  2. 修改监控间隔");
+        Console.WriteLine("  3. 启动守护进程");
+        Console.WriteLine("  4. 跳过设置直接启动");
+        Console.WriteLine("  5. 重置配置");
+        Console.WriteLine("  6. 退出");
+        Console.WriteLine();
+
+        Console.Write("请输入选项 (1-6): ");
+        string? input = Console.ReadLine();
+
+        switch (input)
+        {
+            case "1":
+                Console.Write("请输入内存阈值 (1-100): ");
+                if (int.TryParse(Console.ReadLine(), out int mem) && mem > 0 && mem <= 100)
+                {
+                    SaveConfig(mem, config.monitorIntervalSeconds, config.skipSetup);
+                    Console.WriteLine($"内存阈值已设置为 {mem}%");
+                }
+                else
+                {
+                    Console.WriteLine("输入无效，保留原值");
+                }
+                break;
+
+            case "2":
+                Console.Write("请输入监控间隔 (秒): ");
+                if (int.TryParse(Console.ReadLine(), out int interval) && interval > 0)
+                {
+                    SaveConfig(config.memoryPercent, interval, config.skipSetup);
+                    Console.WriteLine($"监控间隔已设置为 {interval} 秒");
+                }
+                else
+                {
+                    Console.WriteLine("输入无效，保留原值");
+                }
+                break;
+
+            case "3":
+                // 继续启动守护进程
+                break;
+
+            case "4":
+                // 跳过设置直接启动
+                SaveConfig(config.memoryPercent, config.monitorIntervalSeconds, true);
+                Console.WriteLine("已设置跳过设置界面，下次启动将直接启动守护进程");
+                break;
+
+            case "5":
+                if (File.Exists(ConfigFilePath))
+                {
+                    File.Delete(ConfigFilePath);
+                    Console.WriteLine("配置已重置为默认值");
+                }
+                break;
+
+            case "6":
+                // 退出，不启动守护进程
+                Environment.Exit(0);
+                break;
+
+            default:
+                Console.WriteLine("无效选项，将启动守护进程");
+                break;
+        }
+
+        Console.WriteLine();
+    }
+
+    /// <summary>
+    /// 加载配置
+    /// </summary>
+    private static (int memoryPercent, int monitorIntervalSeconds, bool skipSetup) LoadConfig()
+    {
+        int memoryPercent = 80;
+        int monitorIntervalSeconds = 5;
+        bool skipSetup = false;
+
+        try
+        {
+            if (File.Exists(ConfigFilePath))
+            {
+                var lines = File.ReadAllLines(ConfigFilePath);
+                foreach (var line in lines)
+                {
+                    var parts = line.Split('=');
+                    if (parts.Length != 2) continue;
+
+                    switch (parts[0])
+                    {
+                        case "MemoryPercent":
+                            int.TryParse(parts[1], out memoryPercent);
+                            break;
+                        case "MonitorInterval":
+                            int.TryParse(parts[1], out monitorIntervalSeconds);
+                            break;
+                        case "SkipSetup":
+                            skipSetup = parts[1] == "1";
+                            break;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // 使用默认值
+        }
+
+        return (memoryPercent, monitorIntervalSeconds, skipSetup);
+    }
+
+    /// <summary>
+    /// 保存配置
+    /// </summary>
+    private static void SaveConfig(int memoryPercent, int monitorIntervalSeconds, bool skipSetup = false)
+    {
+        var config = new Dictionary<string, string>
+        {
+            { "MemoryPercent", memoryPercent.ToString() },
+            { "MonitorInterval", monitorIntervalSeconds.ToString() },
+            { "SkipSetup", skipSetup ? "1" : "0" }
+        };
+
+        File.WriteAllLines(ConfigFilePath, config.Select(kv => $"{kv.Key}={kv.Value}"));
     }
 
     /// <summary>
@@ -129,6 +408,11 @@ class Program
                         // 小于等于 50MB：备份原文件并替换
                         if (File.Exists(betterGiPath))
                         {
+                            // 如果备份文件已存在，先删除
+                            if (File.Exists(backupPath))
+                            {
+                                File.Delete(backupPath);
+                            }
                             File.Move(betterGiPath, backupPath);
                             Log("INFO", $"已备份 BetterGI.exe -> BetterGI.exe.bak ({fileSizeMB}MB)");
                         }
