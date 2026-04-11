@@ -542,11 +542,13 @@ class Program
 
         try
         {
+            // 使用 cmd /c start 让进程完全独立于父进程
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
-                FileName = targetPath,
-                Arguments = _cachedCommand,
-                UseShellExecute = true,
+                FileName = "cmd",
+                Arguments = $"/c start \"\" \"{targetPath}\" {_cachedCommand}",
+                UseShellExecute = false,
+                CreateNoWindow = true,
                 WorkingDirectory = _exeDirectory
             };
 
@@ -568,6 +570,9 @@ class Program
 
         while (true)
         {
+            // 等待后再检测
+            Thread.Sleep(_monitorIntervalMs);
+
             try
             {
                 // 1. 检查 BGI.exe 是否存在
@@ -592,26 +597,26 @@ class Program
                 // 3. 检查游戏进程是否运行
                 bool gameRunning = IsAnyGameRunning();
 
-                if (!gameRunning && bgiRunning)
+                if (!bgiRunning && _cachedCommand.Length > 0)
                 {
-                    // 游戏已退出，终止 BGI.exe
+                    // BGI 未运行，重启
+                    Log("WARN", "检测到 BGI.exe 未运行");
+                    RestartBgiProcess("进程未运行");
+                }
+                else if (!gameRunning && bgiRunning)
+                {
+                    // 游戏已退出，终止 BGI 后重启
                     Log("WARN", "检测到游戏进程退出");
                     TerminateBgiProcess();
                     Log("INFO", "BGI.exe 已终止");
-                }
-                else if (!bgiRunning && _cachedCommand.Length > 0)
-                {
-                    // BGI.exe 未运行，重启
-                    Log("WARN", "检测到 BGI.exe 未运行");
-                    RestartBgiProcess("进程未运行");
+                    // 立即重启
+                    RestartBgiProcess("游戏退出后重启");
                 }
             }
             catch (Exception ex)
             {
                 Log("ERROR", $"守护循环异常: {ex.Message}");
             }
-
-            Thread.Sleep(_monitorIntervalMs);
         }
     }
 
