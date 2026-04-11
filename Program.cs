@@ -78,10 +78,10 @@ class Program
         // 处理单实例保护
         HandleSingleInstance(args);
 
-        // 缓存启动命令
-        if (args.Length > 0)
+        // 缓存启动命令（有命令则缓存，无命令则清空）
+        _cachedCommand = args.Length > 0 ? string.Join(" ", args) : string.Empty;
+        if (_cachedCommand.Length > 0)
         {
-            _cachedCommand = string.Join(" ", args);
             Log("INFO", $"已缓存启动命令: {_cachedCommand}");
         }
 
@@ -493,14 +493,6 @@ class Program
             {
                 if (process.Id != Environment.ProcessId)
                 {
-                    // 获取旧进程的启动命令
-                    string? oldCommand = GetProcessStartupCommand(process.Id);
-                    if (!string.IsNullOrEmpty(oldCommand))
-                    {
-                        _cachedCommand = oldCommand;
-                        Log("INFO", $"已获取旧进程启动命令: {_cachedCommand}");
-                    }
-
                     process.Kill();
                     process.WaitForExit(3000);
                     Log("INFO", "已终止旧守护进程");
@@ -511,28 +503,6 @@ class Program
                 Log("ERROR", $"终止旧进程失败: {ex.Message}");
             }
         }
-    }
-
-    /// <summary>
-    /// 获取进程的启动命令行
-    /// </summary>
-    private static string? GetProcessStartupCommand(int processId)
-    {
-        try
-        {
-            using var searcher = new System.Management.ManagementObjectSearcher(
-                $"SELECT CommandLine FROM Win32_Process WHERE ProcessId = {processId}");
-
-            foreach (var obj in searcher.Get())
-            {
-                return obj["CommandLine"]?.ToString();
-            }
-        }
-        catch
-        {
-            // 忽略错误
-        }
-        return null;
     }
 
     /// <summary>

@@ -162,7 +162,7 @@ BetterGI.exe --startOneDragon <配置名称>
 
 **日志示例**:
 ```
-[2026-04-11 14:30:00.123] [BGIguard_v1.0] [INFO] BetterGI 守护程序启动成功
+[2026-04-11 14:30:00.123] [BGIguard_v1.0] [INFO] BGIguard 启动成功
 [2026-04-11 14:30:00.456] [BGIguard_v1.0] [INFO] 已替换文件 BetterGI.exe -> BGI.exe
 [2026-04-11 14:30:05.789] [BGIguard_v1.0] [INFO] BGI.exe 已启动, PID: 12345
 [2026-04-11 14:35:00.001] [BGIguard_v1.0] [WARN] 检测到游戏进程退出
