@@ -16,6 +16,9 @@ Write-Host "Cleaning old files..." -ForegroundColor Yellow
 if (Test-Path $OUTPUT_DIR) {
     Remove-Item -Recurse -Force $OUTPUT_DIR
 }
+if (Test-Path "bin") {
+    Remove-Item -Recurse -Force "bin"
+}
 
 # Build project (single file, requires .NET 8 runtime)
 Write-Host ""
@@ -27,6 +30,12 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "[ERROR] Build failed!" -ForegroundColor Red
     exit 1
+}
+
+# 删除 bin 目录
+if (Test-Path "bin") {
+    Remove-Item -Recurse -Force "bin"
+    Write-Host "已删除 bin 目录" -ForegroundColor Yellow
 }
 
 Write-Host ""
