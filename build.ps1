@@ -20,7 +20,8 @@ if (Test-Path $OUTPUT_DIR) {
 # Build project (single file, requires .NET 8 runtime)
 Write-Host ""
 Write-Host "Building project (single file)..." -ForegroundColor Yellow
-dotnet publish -c $CONFIG -p:PublishSingleFile=true --self-contained false -p:DebugType=none -p:DebugSymbols=false -p:Version=$Version -o ./$OUTPUT_DIR
+# 设置完整版本号 (4位) 用于程序集版本，Version 用于显示版本
+dotnet publish -c $CONFIG -p:PublishSingleFile=true --self-contained false -p:DebugType=none -p:DebugSymbols=false -p:Version=$Version -p:AssemblyVersion=$Version -p:FileVersion=$Version -o ./$OUTPUT_DIR
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -25,7 +26,14 @@ class Program
     private static string _bgiProcessName = "BGI";
     private static Mutex? _mutex;
     private static readonly object _logLock = new();
-    private static readonly string _version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "1.0.0";
+    private static readonly string _version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "1.0";
+
+    // 获取显示版本（使用 FileVersion 更精确）
+    private static string GetDisplayVersion()
+    {
+        var ver = typeof(Program).Assembly.GetCustomAttribute<System.Reflection.AssemblyFileVersionAttribute>();
+        return ver?.Version ?? _version;
+    }
 
     // 运行时配置
     private static int _monitorIntervalMs = 5000;
@@ -745,7 +753,7 @@ class Program
     private static void Log(string level, string message)
     {
         string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-        string logMessage = $"[{timestamp}] [BGIguard_v{_version}] [{level}] {message}";
+        string logMessage = $"[{timestamp}] [BGIguard_v{GetDisplayVersion()}] [{level}] {message}";
 
         // 控制台输出
         Console.WriteLine(logMessage);
