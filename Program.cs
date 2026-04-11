@@ -11,10 +11,7 @@ namespace BGIguard;
 class Program
 {
     // ============== 配置常量 ==============
-    private const int MonitorIntervalMs = 5000;
     private const int RestartDelayMs = 1000;
-    private const int WorkingSetMemoryLimitMB = 500;
-    private const int VirtualMemoryLimitMB = 1500;
     private const int MaxLogFiles = 7;
     private const string GuardFileName = "BGIguard.exe";
     private const string BgiExeName = "BGI.exe";
@@ -29,12 +26,31 @@ class Program
     private static readonly object _logLock = new();
     private static readonly string _version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "1.0.0";
 
+    // 运行时配置
+    private static int _monitorIntervalMs = 5000;
+    private static int _memoryPercent = 80;
+
     // 游戏进程名
     private static readonly string[] GameProcessNames = { "YuanShen", "GenshinImpact" };
 
     static void Main(string[] args)
     {
         _exeDirectory = AppDomain.CurrentDomain.BaseDirectory;
+
+        // 加载配置
+        var (memoryPercent, monitorIntervalSeconds, _) = SettingsForm.LoadConfig();
+        _monitorIntervalMs = monitorIntervalSeconds * 1000;
+        _memoryPercent = memoryPercent;
+
+        // 无参数启动时显示设置窗口
+        if (args.Length == 0)
+        {
+            // 显示设置窗口
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.Run(new SettingsForm());
+            return;
+        }
 
         // 记录启动日志
         Log("INFO", "BGIguard 启动成功");
@@ -229,10 +245,14 @@ class Program
     private static void StartBgiProcess()
     {
         string bgiPath = Path.Combine(_exeDirectory, BgiExeName);
+        string backupPath = Path.Combine(_exeDirectory, "BetterGI.exe.bak");
 
-        if (!File.Exists(bgiPath))
+        // 检查 BGI.exe 是否存在，否则使用备份
+        string? targetPath = File.Exists(bgiPath) ? bgiPath : (File.Exists(backupPath) ? backupPath : null);
+
+        if (targetPath == null)
         {
-            Log("ERROR", $"找不到 BGI.exe: {bgiPath}");
+            Log("ERROR", $"找不到 BGI.exe 或 BetterGI.exe.bak");
             return;
         }
 
@@ -240,18 +260,18 @@ class Program
         {
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
-                FileName = bgiPath,
+                FileName = targetPath,
                 Arguments = _cachedCommand,
                 UseShellExecute = true,
                 WorkingDirectory = _exeDirectory
             };
 
             Process.Start(startInfo);
-            Log("INFO", $"BGI.exe 已启动, 命令: {_cachedCommand}");
+            Log("INFO", $"已启动 {Path.GetFileName(targetPath)}, 命令: {_cachedCommand}");
         }
         catch (Exception ex)
         {
-            Log("ERROR", $"启动 BGI.exe 失败: {ex.Message}");
+            Log("ERROR", $"启动失败: {ex.Message}");
         }
     }
 
@@ -269,27 +289,19 @@ class Program
                 // 1. 检查 BGI.exe 是否存在
                 bool bgiRunning = IsProcessRunning(_bgiProcessName);
 
-                // 2. 检查内存使用
-                if (bgiRunning)
+                // 2. 检查系统内存使用
+                var (totalBytes, usedBytes) = GetSystemMemory();
+                long totalMemoryMB = totalBytes / (1024 * 1024);
+                long usedMemoryMB = usedBytes / (1024 * 1024);
+                long memoryLimitMB = totalMemoryMB * _memoryPercent / 100;
+
+                if (usedMemoryMB > memoryLimitMB)
                 {
-                    var (workingSet, virtualMem) = GetProcessMemory(_bgiProcessName);
-                    bool needRestart = false;
+                    Log("WARN", $"系统内存超限: 已用={usedMemoryMB}MB (阈值={memoryLimitMB}MB, {_memoryPercent}%)");
 
-                    if (workingSet > WorkingSetMemoryLimitMB * 1024 * 1024)
+                    if (bgiRunning)
                     {
-                        Log("WARN", $"BGI.exe 内存超限: 工作集={workingSet / 1024 / 1024}MB");
-                        needRestart = true;
-                    }
-
-                    if (virtualMem > VirtualMemoryLimitMB * 1024 * 1024)
-                    {
-                        Log("WARN", $"BGI.exe 内存超限: 虚拟内存={virtualMem / 1024 / 1024}MB");
-                        needRestart = true;
-                    }
-
-                    if (needRestart)
-                    {
-                        RestartBgiProcess("内存超限");
+                        RestartBgiProcess("系统内存超限");
                     }
                 }
 
@@ -315,8 +327,51 @@ class Program
                 Log("ERROR", $"守护循环异常: {ex.Message}");
             }
 
-            Thread.Sleep(MonitorIntervalMs);
+            Thread.Sleep(_monitorIntervalMs);
         }
+    }
+
+    /// <summary>
+    /// 获取系统内存使用情况
+    /// </summary>
+    private static (long totalBytes, long usedBytes) GetSystemMemory()
+    {
+        try
+        {
+            using var searcher = new System.Management.ManagementObjectSearcher("SELECT TotalVisibleMemorySize, FreePhysicalMemory FROM Win32_OperatingSystem");
+            foreach (var obj in searcher.Get())
+            {
+                long totalKB = Convert.ToInt64(obj["TotalVisibleMemorySize"]);
+                long freeKB = Convert.ToInt64(obj["FreePhysicalMemory"]);
+                long usedKB = totalKB - freeKB;
+                return (totalKB * 1024, usedKB * 1024);
+            }
+        }
+        catch
+        {
+            // 默认返回 16GB
+        }
+        return (16L * 1024 * 1024 * 1024, 0);
+    }
+
+    /// <summary>
+    /// 获取系统总物理内存
+    /// </summary>
+    private static long GetTotalPhysicalMemory()
+    {
+        try
+        {
+            using var searcher = new System.Management.ManagementObjectSearcher("SELECT TotalPhysicalMemory FROM Win32_ComputerSystem");
+            foreach (var obj in searcher.Get())
+            {
+                return Convert.ToInt64(obj["TotalPhysicalMemory"]);
+            }
+        }
+        catch
+        {
+            // 默认返回 16GB
+        }
+        return 16L * 1024 * 1024 * 1024;
     }
 
     /// <summary>

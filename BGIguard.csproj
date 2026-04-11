@@ -5,6 +5,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>BGIguard</AssemblyName>
     <Version>1.0.0</Version>
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
