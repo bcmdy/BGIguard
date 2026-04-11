@@ -48,7 +48,7 @@ class Program
 
         // 设置控制台窗口标题
         string version = GetDisplayVersion();
-        Console.Title = $"BetterGI 守护程序 v{version} By:Bcmdy";
+        Console.Title = $"BetterGI 进程守护 v{version} By:Bcmdy";
 
         // 处理命令行参数
         if (args.Length > 0)
