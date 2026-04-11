@@ -522,6 +522,14 @@ class Program
             return;
         }
 
+        // 先终止可能已存在的 BGI.exe 进程
+        bool hadBgiProcess = IsProcessRunning(_bgiProcessName);
+        if (hadBgiProcess)
+        {
+            Log("INFO", "终止已存在的 BGI.exe 进程");
+            TerminateBgiProcess();
+        }
+
         try
         {
             // 使用 cmd /c start 让进程完全独立于父进程
