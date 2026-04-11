@@ -16,7 +16,7 @@ class Program
     private const int WorkingSetMemoryLimitMB = 500;
     private const int VirtualMemoryLimitMB = 1500;
     private const int MaxLogFiles = 7;
-    private const string GuardFileName = "bgi守护.exe";
+    private const string GuardFileName = "BGIguard.exe";
     private const string BgiExeName = "BGI.exe";
     private const string BetterGiExeName = "BetterGI.exe";
     private const string LogFilePrefix = "BGI_guard";
@@ -27,6 +27,7 @@ class Program
     private static string _bgiProcessName = "BGI";
     private static Mutex? _mutex;
     private static readonly object _logLock = new();
+    private static readonly string _version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "1.0.0";
 
     // 游戏进程名
     private static readonly string[] GameProcessNames = { "YuanShen", "GenshinImpact" };
@@ -74,32 +75,65 @@ class Program
             string guardFilePath = Path.Combine(_exeDirectory, GuardFileName);
             string betterGiPath = Path.Combine(_exeDirectory, BetterGiExeName);
             string bgiPath = Path.Combine(_exeDirectory, BgiExeName);
+            string backupPath = Path.Combine(_exeDirectory, "BetterGI.exe.bak");
 
-            if (File.Exists(betterGiPath) && !File.Exists(bgiPath))
+            if (File.Exists(betterGiPath))
             {
                 try
                 {
-                    // 1. 重命名 BetterGI.exe -> BGI.exe
-                    File.Move(betterGiPath, bgiPath);
-                    Log("INFO", "已替换文件 BetterGI.exe -> BGI.exe");
+                    // 获取 BetterGI.exe 文件大小 (MB)
+                    FileInfo fileInfo = new FileInfo(betterGiPath);
+                    long fileSizeMB = fileInfo.Length / (1024 * 1024);
 
-                    // 2. 复制自身为 BetterGI.exe
-                    string selfPath = Environment.ProcessPath ?? "";
-                    File.Copy(selfPath, betterGiPath, true);
-                    Log("INFO", $"已复制守护器到 BetterGI.exe");
-
-                    // 3. 使用新名称重新启动
-                    ProcessStartInfo startInfo = new ProcessStartInfo
+                    if (fileSizeMB > 50 && !File.Exists(bgiPath))
                     {
-                        FileName = betterGiPath,
-                        Arguments = string.Join(" ", Environment.GetCommandLineArgs().Skip(1)),
-                        UseShellExecute = true
-                    };
-                    Process.Start(startInfo);
-                    Log("INFO", "以 BetterGI.exe 身份重新启动");
+                        // 大于 50MB：执行原有替换操作
+                        File.Move(betterGiPath, bgiPath);
+                        Log("INFO", $"已替换文件 BetterGI.exe ({fileSizeMB}MB) -> BGI.exe");
 
-                    // 退出当前进程
-                    Environment.Exit(0);
+                        // 复制自身为 BetterGI.exe
+                        string selfPath = Environment.ProcessPath ?? "";
+                        File.Copy(selfPath, betterGiPath, true);
+                        Log("INFO", "已复制守护器到 BetterGI.exe");
+
+                        // 使用新名称重新启动
+                        ProcessStartInfo startInfo = new ProcessStartInfo
+                        {
+                            FileName = betterGiPath,
+                            Arguments = string.Join(" ", Environment.GetCommandLineArgs().Skip(1)),
+                            UseShellExecute = true
+                        };
+                        Process.Start(startInfo);
+                        Log("INFO", "以 BetterGI.exe 身份重新启动");
+
+                        Environment.Exit(0);
+                    }
+                    else
+                    {
+                        // 小于等于 50MB：备份原文件并替换
+                        if (File.Exists(betterGiPath))
+                        {
+                            File.Move(betterGiPath, backupPath);
+                            Log("INFO", $"已备份 BetterGI.exe -> BetterGI.exe.bak ({fileSizeMB}MB)");
+                        }
+
+                        // 复制自身为 BetterGI.exe
+                        string selfPath = Environment.ProcessPath ?? "";
+                        File.Copy(selfPath, betterGiPath, true);
+                        Log("INFO", "已复制守护器到 BetterGI.exe");
+
+                        // 使用新名称重新启动
+                        ProcessStartInfo startInfo = new ProcessStartInfo
+                        {
+                            FileName = betterGiPath,
+                            Arguments = string.Join(" ", Environment.GetCommandLineArgs().Skip(1)),
+                            UseShellExecute = true
+                        };
+                        Process.Start(startInfo);
+                        Log("INFO", "以 BetterGI.exe 身份重新启动");
+
+                        Environment.Exit(0);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -367,7 +401,7 @@ class Program
     private static void Log(string level, string message)
     {
         string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-        string logMessage = $"[{timestamp}] [{level}] {message}";
+        string logMessage = $"[{timestamp}] [BGIguard_v{_version}] [{level}] {message}";
 
         // 控制台输出
         Console.WriteLine(logMessage);

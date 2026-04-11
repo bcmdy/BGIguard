@@ -29,23 +29,26 @@
 ### 2.2 文件伪装与替换机制
 
 **初始状态**:
-- 用户提供两个文件: `BetterGI.exe`(原始启动器) 和 `BGIguard.exe`(守护程序) 或 `bgi守护.exe`
+- 用户提供两个文件: `BetterGI.exe`(原始启动器) 和 `BGIguard.exe`(守护程序)
 
 **部署机制**:
 1. 首次运行守护程序时:
    - 检测自身进程名是否为 `BetterGI.exe`
    - 若不是，则执行文件替换操作:
-     - 将目录下的 `BetterGI.exe` 重命名为 `BGI.exe`
+     - 判断 `BetterGI.exe` 文件大小:
+       - **大于 50MB**: 重命名为 `BGI.exe`
+       - **小于等于 50MB**: 备份为 `BetterGI.exe.bak`
      - 将自身复制并重命名为 `BetterGI.exe`
-     - 保留原始守护器文件 (`bgi守护.exe`) 以便下次更新
+     - 保留原始守护器文件 (`BGIguard.exe`) 以便下次更新
    - 以 `BetterGI.exe` 身份重新启动并继续执行
 
 2. 此后用户点击 `BetterGI.exe` 时:
    - 实际启动的是守护程序
    - 守护程序解析启动参数
    - 将参数传递给真正的 `BGI.exe` 执行
+   - 若原文件被备份为 `BetterGI.exe.bak`，则传递给 `BetterGI.exe.bak` 执行
 
-3. **后续更新**: 更新 BetterGI 官方版本后，只需再次运行 `bgi守护.exe`，守护器会自动完成新版备份与替换
+3. **后续更新**: 更新 BetterGI 官方版本后，只需再次运行 `BGIguard.exe`，守护器会自动完成新版备份与替换
 
 ### 2.3 启动命令传递
 
@@ -149,11 +152,11 @@ BetterGI.exe --startOneDragon <配置名称>
 
 **日志示例**:
 ```
-[2026-04-11 14:30:00.123] [INFO] BGIguard 启动成功
-[2026-04-11 14:30:00.456] [INFO] 已替换文件 BetterGI.exe -> BGI.exe
-[2026-04-11 14:30:05.789] [INFO] BGI.exe 已启动, PID: 12345
-[2026-04-11 14:35:00.001] [WARN] 检测到游戏进程退出
-[2026-04-11 14:35:00.123] [INFO] 正在重启 BGI.exe...
+[2026-04-11 14:30:00.123] [BGIguard_v1.0] [INFO] BGIguard 启动成功
+[2026-04-11 14:30:00.456] [BGIguard_v1.0] [INFO] 已替换文件 BetterGI.exe -> BGI.exe
+[2026-04-11 14:30:05.789] [BGIguard_v1.0] [INFO] BGI.exe 已启动, PID: 12345
+[2026-04-11 14:35:00.001] [BGIguard_v1.0] [WARN] 检测到游戏进程退出
+[2026-04-11 14:35:00.123] [BGIguard_v1.0] [INFO] 正在重启 BGI.exe...
 ```
 
 ---
@@ -164,7 +167,7 @@ BetterGI.exe --startOneDragon <配置名称>
 BetterGI 根目录
 ├─ BetterGI.exe   ← 守护器（实际为守护器的副本）
 ├─ BGI.exe        ← 真正的主程序（原 BetterGI）
-├─ bgi守护.exe    ← 守护器原始文件，保留以便下次更新
+├─ BGIguard.exe    ← 守护器原始文件，保留以便下次更新
 └─ BGI_guard*.log  ← 运行日志（自动生成）
 ```
 
@@ -219,8 +222,9 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
          ▼     ▼                                    │
 ┌─────────────────┐                              │
 │ 文件替换操作     │                              │
-│ 1.重命名BetterGI│                              │
-│ 2.自复制改名   │                              │
+│ 1.判断文件大小   │                              │
+│ 2.重命名/备份   │                              │
+│ 3.自复制改名   │                              │
 └────────┬────────┘                              │
          │                                      │
          ▼                                      ▼

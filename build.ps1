@@ -1,10 +1,13 @@
 # BGIguard Build Script (PowerShell)
+param(
+    [string]$Version = "1.0.0"
+)
 
 $CONFIG = "Release"
 $OUTPUT_DIR = "publish"
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "BGIguard Build Script" -ForegroundColor Cyan
+Write-Host "BGIguard Build Script v$Version" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -17,7 +20,7 @@ if (Test-Path $OUTPUT_DIR) {
 # Build project (single file, requires .NET 8 runtime)
 Write-Host ""
 Write-Host "Building project (single file)..." -ForegroundColor Yellow
-dotnet publish -c $CONFIG -p:PublishSingleFile=true --self-contained false -p:DebugType=none -p:DebugSymbols=false -o ./$OUTPUT_DIR
+dotnet publish -c $CONFIG -p:PublishSingleFile=true --self-contained false -p:DebugType=none -p:DebugSymbols=false -p:Version=$Version -o ./$OUTPUT_DIR
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
