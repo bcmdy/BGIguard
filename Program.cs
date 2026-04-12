@@ -581,18 +581,20 @@ class Program
                 bool gameRunning = IsAnyGameRunning();
                 var gameProcesses = GetRunningGameProcesses();
 
-                // 打印检测日志 - 进程情况
-                Log("INFO", $"========== 检测时刻: {DateTime.Now:HH:mm:ss} ==========");
-                Log("INFO", $"[进程情况] BGI.exe: {(bgiRunning ? "运行中" : "未运行")}");
-                Log("INFO", $"[进程情况] 游戏进程: {(gameRunning ? string.Join(", ", gameProcesses) : "未运行")}");
+                // 计算内存使用百分比
+                int usedPercent = (int)(usedMemoryMB * 100 / Math.Max(1, totalMemoryMB));
+                const int warnPercent = 85; // 内存占用85%时开始打印详细警告
 
-                // 打印检测日志 - 内存占用
-                Log("INFO", $"[内存占用] 物理内存: {physicalMB}MB");
-                Log("INFO", $"[内存占用] 虚拟内存: {virtualMB}MB");
-                Log("INFO", $"[内存占用] 总内存(物+虚): {totalMemoryMB}MB");
-                Log("INFO", $"[内存占用] 已用内存: {usedMemoryMB}MB ({usedMemoryMB * 100 / Math.Max(1, totalMemoryMB)}%)");
-                Log("INFO", $"[内存占用] 可用内存: {availableMemoryMB}MB");
-                Log("INFO", $"[内存占用] 内存阈值: {memoryLimitMB}MB ({_memoryPercent}%)");
+                // 每次检测打印一行简单日志
+                string gameStatus = gameRunning ? string.Join(", ", gameProcesses) : "无";
+                Log("INFO", $"检测 {DateTime.Now:HH:mm:ss} | 内存: {usedPercent}% | BGI: {(bgiRunning ? "运行" : "未运行")} | 游戏: {gameStatus}");
+
+                // 当内存占用超过85%时打印详细内存信息
+                if (usedPercent >= warnPercent)
+                {
+                    Log("WARN", $"[内存警告] 已用: {usedMemoryMB}MB/{totalMemoryMB}MB ({usedPercent}%) | 阈值: {_memoryPercent}%");
+                    Log("WARN", $"[内存详情] 物理: {physicalMB}MB | 虚拟: {virtualMB}MB | 可用: {availableMemoryMB}MB");
+                }
 
                 // 判断是否需要重启
                 bool needRestart = false;
