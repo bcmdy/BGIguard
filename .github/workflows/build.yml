@@ -1,0 +1,38 @@
+name: Build BGIguard
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号'
+        required: false
+        default: '1.0.0'
+        type: string
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0'
+
+      - name: Build (self-contained, single file)
+        run: |
+          dotnet publish -c Release -p:PublishSingleFile=true --self-contained true -p:DebugType=none -p:DebugSymbols=false -p:Version=${{ github.event.inputs.version || '1.0.0' }} -p:AssemblyVersion=${{ github.event.inputs.version || '1.0.0' }} -p:FileVersion=${{ github.event.inputs.version || '1.0.0' }} -o ./publish -r win-x64
+
+      - name: Remove bin directory
+        run: |
+          if (Test-Path "bin") { Remove-Item -Recurse -Force "bin" }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BGIguard
+          path: publish/
+          retention-days: 30
