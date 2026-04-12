@@ -569,11 +569,13 @@ class Program
                 bool bgiRunning = IsProcessRunning(_bgiProcessName);
 
                 // 2. 检查系统内存使用
-                var (totalBytes, usedBytes) = GetSystemMemory();
+                var (totalBytes, usedBytes, physicalBytes, virtualBytes) = GetSystemMemory();
                 long totalMemoryMB = totalBytes / (1024 * 1024);
                 long usedMemoryMB = usedBytes / (1024 * 1024);
                 long availableMemoryMB = totalMemoryMB - usedMemoryMB;
                 long memoryLimitMB = totalMemoryMB * _memoryPercent / 100;
+                long physicalMB = physicalBytes / (1024 * 1024);
+                long virtualMB = virtualBytes / (1024 * 1024);
 
                 // 3. 检查游戏进程是否运行
                 bool gameRunning = IsAnyGameRunning();
@@ -585,8 +587,10 @@ class Program
                 Log("INFO", $"[进程情况] 游戏进程: {(gameRunning ? string.Join(", ", gameProcesses) : "未运行")}");
 
                 // 打印检测日志 - 内存占用
-                Log("INFO", $"[内存占用] 系统总内存: {totalMemoryMB}MB");
-                Log("INFO", $"[内存占用] 已用内存: {usedMemoryMB}MB ({usedMemoryMB * 100 / totalMemoryMB}%)");
+                Log("INFO", $"[内存占用] 物理内存: {physicalMB}MB");
+                Log("INFO", $"[内存占用] 虚拟内存: {virtualMB}MB");
+                Log("INFO", $"[内存占用] 总内存(物+虚): {totalMemoryMB}MB");
+                Log("INFO", $"[内存占用] 已用内存: {usedMemoryMB}MB ({usedMemoryMB * 100 / Math.Max(1, totalMemoryMB)}%)");
                 Log("INFO", $"[内存占用] 可用内存: {availableMemoryMB}MB");
                 Log("INFO", $"[内存占用] 内存阈值: {memoryLimitMB}MB ({_memoryPercent}%)");
 
@@ -631,26 +635,38 @@ class Program
     }
 
     /// <summary>
-    /// 获取系统内存使用情况
+    /// 获取系统内存使用情况（物理+虚拟）
     /// </summary>
-    private static (long totalBytes, long usedBytes) GetSystemMemory()
+    private static (long totalBytes, long usedBytes, long physicalBytes, long virtualBytes) GetSystemMemory()
     {
         try
         {
-            using var searcher = new System.Management.ManagementObjectSearcher("SELECT TotalVisibleMemorySize, FreePhysicalMemory FROM Win32_OperatingSystem");
+            using var searcher = new System.Management.ManagementObjectSearcher(
+                "SELECT TotalVisibleMemorySize, FreePhysicalMemory, TotalVirtualMemorySize, FreeVirtualMemory FROM Win32_OperatingSystem");
             foreach (var obj in searcher.Get())
             {
-                long totalKB = Convert.ToInt64(obj["TotalVisibleMemorySize"]);
-                long freeKB = Convert.ToInt64(obj["FreePhysicalMemory"]);
-                long usedKB = totalKB - freeKB;
-                return (totalKB * 1024, usedKB * 1024);
+                // 物理内存
+                long totalPhysicalKB = Convert.ToInt64(obj["TotalVisibleMemorySize"]);
+                long freePhysicalKB = Convert.ToInt64(obj["FreePhysicalMemory"]);
+                long usedPhysicalKB = totalPhysicalKB - freePhysicalKB;
+
+                // 虚拟内存（分页文件）
+                long totalVirtualKB = Convert.ToInt64(obj["TotalVirtualMemorySize"]);
+                long freeVirtualKB = Convert.ToInt64(obj["FreeVirtualMemory"]);
+                long usedVirtualKB = totalVirtualKB - freeVirtualKB;
+
+                // 总内存 = 物理内存 + 虚拟内存
+                long totalKB = totalPhysicalKB + totalVirtualKB;
+                long usedKB = usedPhysicalKB + usedVirtualKB;
+
+                return (totalKB * 1024, usedKB * 1024, totalPhysicalKB * 1024, totalVirtualKB * 1024);
             }
         }
         catch
         {
-            // 默认返回 16GB
+            // 默认返回 16GB 物理 + 16GB 虚拟
         }
-        return (16L * 1024 * 1024 * 1024, 0);
+        return (32L * 1024 * 1024 * 1024, 0, 16L * 1024 * 1024 * 1024, 16L * 1024 * 1024 * 1024);
     }
 
     /// <summary>
