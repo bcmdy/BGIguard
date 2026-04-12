@@ -37,7 +37,7 @@ class Program
 
     // 运行时配置
     private static int _monitorIntervalMs = 5000;
-    private static int _memoryPercent = 80;
+    private static int _memoryPercent = 95;
 
     // 游戏进程名
     private static readonly string[] GameProcessNames = { "YuanShen", "GenshinImpact" };
@@ -220,7 +220,7 @@ class Program
         Console.WriteLine("  BGIguard.exe reset              重置配置为默认值");
         Console.WriteLine("  BGIguard.exe help               显示帮助");
         Console.WriteLine();
-        Console.WriteLine("默认值: 内存阈值=80%, 监控间隔=5秒, 跳过设置=否");
+        Console.WriteLine("默认值: 内存阈值=95%, 监控间隔=5秒, 跳过设置=否");
     }
 
     /// <summary>
@@ -314,7 +314,7 @@ class Program
     /// </summary>
     private static (int memoryPercent, int monitorIntervalSeconds, bool skipSetup) LoadConfig()
     {
-        int memoryPercent = 80;
+        int memoryPercent = 95;
         int monitorIntervalSeconds = 5;
         bool skipSetup = false;
 
