@@ -572,26 +572,41 @@ class Program
                 var (totalBytes, usedBytes) = GetSystemMemory();
                 long totalMemoryMB = totalBytes / (1024 * 1024);
                 long usedMemoryMB = usedBytes / (1024 * 1024);
+                long availableMemoryMB = totalMemoryMB - usedMemoryMB;
                 long memoryLimitMB = totalMemoryMB * _memoryPercent / 100;
+
+                // 3. 检查游戏进程是否运行
+                bool gameRunning = IsAnyGameRunning();
+                var gameProcesses = GetRunningGameProcesses();
+
+                // 打印检测日志 - 进程情况
+                Log("INFO", $"========== 检测时刻: {DateTime.Now:HH:mm:ss} ==========");
+                Log("INFO", $"[进程情况] BGI.exe: {(bgiRunning ? "运行中" : "未运行")}");
+                Log("INFO", $"[进程情况] 游戏进程: {(gameRunning ? string.Join(", ", gameProcesses) : "未运行")}");
+
+                // 打印检测日志 - 内存占用
+                Log("INFO", $"[内存占用] 系统总内存: {totalMemoryMB}MB");
+                Log("INFO", $"[内存占用] 已用内存: {usedMemoryMB}MB ({usedMemoryMB * 100 / totalMemoryMB}%)");
+                Log("INFO", $"[内存占用] 可用内存: {availableMemoryMB}MB");
+                Log("INFO", $"[内存占用] 内存阈值: {memoryLimitMB}MB ({_memoryPercent}%)");
+
+                // 判断是否需要重启
+                bool needRestart = false;
+                string restartReason = "";
 
                 if (usedMemoryMB > memoryLimitMB)
                 {
                     Log("WARN", $"系统内存超限: 已用={usedMemoryMB}MB (阈值={memoryLimitMB}MB, {_memoryPercent}%)");
-
-                    if (bgiRunning)
-                    {
-                        RestartBgiProcess("系统内存超限");
-                    }
+                    restartReason = "系统内存超限";
+                    needRestart = true;
                 }
-
-                // 3. 检查游戏进程是否运行
-                bool gameRunning = IsAnyGameRunning();
 
                 if (!bgiRunning)
                 {
                     // BGI 未运行，重启（无论是否有游戏运行）
                     Log("WARN", "检测到 BGI.exe 未运行");
-                    RestartBgiProcess("进程未运行");
+                    restartReason = string.IsNullOrEmpty(restartReason) ? "进程未运行" : restartReason + " + 进程未运行";
+                    needRestart = true;
                 }
                 else if (!gameRunning)
                 {
@@ -599,8 +614,13 @@ class Program
                     Log("WARN", "检测到游戏进程退出");
                     TerminateBgiProcess();
                     Log("INFO", "BGI.exe 已终止");
-                    // 立即重启
-                    RestartBgiProcess("游戏退出后重启");
+                    restartReason = "游戏退出后重启";
+                    needRestart = true;
+                }
+
+                if (needRestart && !string.IsNullOrEmpty(restartReason))
+                {
+                    RestartBgiProcess(restartReason);
                 }
             }
             catch (Exception ex)
@@ -672,6 +692,22 @@ class Program
                 return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// 获取正在运行的游戏进程名称列表
+    /// </summary>
+    private static List<string> GetRunningGameProcesses()
+    {
+        var runningGames = new List<string>();
+        foreach (var name in GameProcessNames)
+        {
+            if (IsProcessRunning(name))
+            {
+                runningGames.Add(name);
+            }
+        }
+        return runningGames;
     }
 
     /// <summary>
