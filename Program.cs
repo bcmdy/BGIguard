@@ -155,6 +155,15 @@ class Program
         // 启动 BetterGI.exe
         StartBetterGiProcess();
 
+        // 启动后立即缓存启动命令
+        Thread.Sleep(500); // 等待进程启动
+        string? initialCommand = GetBetterGiCommandLine();
+        if (initialCommand != null)
+        {
+            _cachedCommand = initialCommand;
+            Log("INFO", $"已缓存启动命令: {_cachedCommand}");
+        }
+
         // 进入守护主循环
         RunGuardLoop();
     }
