@@ -976,34 +976,41 @@ class Program
         if (string.IsNullOrWhiteSpace(fullCommandLine))
             return string.Empty;
 
-        // 命令行格式通常是: "E:\YS\BetterGI\BetterGI.exe" --startOneDragon test
-        // 或者: E:\YS\BetterGI\BetterGI.exe --startOneDragon test
-        // 或者: "E:\YS\BetterGI\BetterGI.exe" "--startOneDragon" "test"
-        // 提取第一个空格后的所有内容，并处理剩余的引号
-
         string cmd = fullCommandLine.Trim();
 
-        // 找到第一个引号对
-        int firstQuoteStart = cmd.IndexOf('"');
-        if (firstQuoteStart >= 0)
+        // 处理带引号的情况: "E:\YS\BetterGI\BetterGI.exe" --startOneDragon test
+        if (cmd.StartsWith('"'))
         {
-            int firstQuoteEnd = cmd.IndexOf('"', firstQuoteStart + 1);
-            if (firstQuoteEnd > firstQuoteStart)
+            int firstQuoteEnd = cmd.IndexOf('"', 1);
+            if (firstQuoteEnd > 0)
             {
-                // 第一个引号对后面是参数
                 string afterFirstArg = cmd.Substring(firstQuoteEnd + 1).Trim();
-                // 去掉剩余参数中的引号（参数可能带引号）
                 return afterFirstArg.Replace("\"", "").Trim();
             }
         }
 
-        // 如果没有引号，找第一个空格
-        int spaceIndex = cmd.IndexOf(' ');
-        if (spaceIndex > 0)
+        // 处理不带引号的情况: C:\Program Files\BetterGI\BetterGI.exe --startOneDragon
+        // 找到 .exe 后第一个空格的位置
+        int exeIndex = cmd.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+        if (exeIndex > 0)
         {
-            return cmd.Substring(spaceIndex + 1).Trim();
+            // .exe 后面可能紧跟参数或空格
+            int afterExe = exeIndex + 4;
+            if (afterExe < cmd.Length)
+            {
+                // 跳过可能的空格
+                int spaceIndex = cmd.IndexOf(' ', afterExe);
+                if (spaceIndex > 0)
+                {
+                    return cmd.Substring(spaceIndex + 1).Trim();
+                }
+            }
+            // 如果 .exe 是最后一个，没有参数
+            return string.Empty;
         }
 
-        return string.Empty;
+        // 如果没有 .exe，使用原来的空格分割方式
+        int firstSpace = cmd.IndexOf(' ');
+        return firstSpace > 0 ? cmd.Substring(firstSpace + 1).Trim() : string.Empty;
     }
 }
