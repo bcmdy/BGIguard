@@ -861,13 +861,20 @@ class Program
     /// </summary>
     private static (long totalMB, long usedMB, long physicalMB, long virtualMB) GetSystemMemory()
     {
-        var memStatus = new MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>() };
+        var memStatus = new MEMORYSTATUSEX
+        {
+            dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>()
+        };
+
         if (GlobalMemoryStatusEx(ref memStatus))
         {
-            // 总内存 = 物理 + 虚拟
             ulong totalKB = (memStatus.ullTotalPhys + memStatus.ullTotalVirtual) / 1024;
-            ulong usedKB = (memStatus.ullTotalPhys - memStatus.ullAvailPhys + memStatus.ullTotalVirtual - memStatus.ullAvailVirtual) / 1024;
-            return ((long)totalKB, (long)usedKB, (long)(memStatus.ullTotalPhys / 1024), (long)(memStatus.ullTotalVirtual / 1024));
+            ulong usedKB = ((memStatus.ullTotalPhys - memStatus.ullAvailPhys) +
+                             (memStatus.ullTotalVirtual - memStatus.ullAvailVirtual)) / 1024;
+
+            return ((long)totalKB, (long)usedKB,
+                    (long)(memStatus.ullTotalPhys / 1024),
+                    (long)(memStatus.ullTotalVirtual / 1024));
         }
         return (32 * 1024 * 1024, 0, 16 * 1024 * 1024, 16 * 1024 * 1024);
     }
