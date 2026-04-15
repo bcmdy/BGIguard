@@ -6,7 +6,7 @@
 
 **项目类型**: Windows 桌面工具 / 游戏辅助启动器
 
-**核心功能**: 实现 BetterGI 启动器的"无痛"替换，提供崩溃自启、掉线重连、单实例保护、游戏进程联动等守护功能。
+**核心功能**: 实现 BetterGI 启动器的"无痛"守护，提供崩溃自启、掉线重连、单实例保护、游戏进程联动等守护功能。
 
 **目标用户**: 使用 BetterGI 启动器的《原神》玩家，需要稳定挂机辅助的玩家群体。
 
@@ -18,35 +18,37 @@
 
 | 功能 | 描述 |
 |------|------|
-| 崩溃自启 | 监控 BetterGI/BGI 进程，异常退出时自动重启 |
+| 崩溃自启 | 监控 BetterGI.exe 进程，异常退出时自动重启 |
 | 掉线重连 | 检测游戏进程状态，断线后自动重连 |
 | 单实例保护 | 防止多开，确保只有一个守护实例运行 |
 | 游戏进程联动 | 监控原神客户端进程状态 |
-| 命令行设置 | 无参数启动时显示命令行设置界面，可配置参数 |
+| 命令行设置 | 支持命令行参数配置各项参数 |
 | 跳过设置 | 可配置为跳过设置界面直接启动守护 |
-| 日志记录 | 实时写入日志文件，按日自动轮转 |
-| 内存检测 | 监控 BetterGI.exe 内存使用，超阈值自动重启 |
+| 日志记录 | 实时写入日志文件，按日自动轮转，UTF8 编码 |
+| 内存检测 | 监控系统整体内存（物理+虚拟），超阈值自动重启 |
 
 ### 2.2 启动命令获取机制
 
-**获取方式**: 使用 NtQueryInformationProcess 读取目标进程 PEB 获取启动命令
+**获取方式**: 使用 NtQueryInformationProcess + ReadProcessMemory 读取目标进程 PEB 获取启动命令
 
 **目标进程**:
 - `BetterGI.exe`（用户启动的入口程序，守护目标）
 
 **获取逻辑**:
 1. 程序启动时通过 NtQueryInformationProcess 查询 `BetterGI.exe` 进程
-2. 获取其 PEB 中的 CommandLine（完整启动命令）
+2. 获取其 PEB 中的 ProcessParameters 指针
+3. 读取 ProcessParameters 中的 CommandLine UNICODE_STRING
+4. 解析并提取命令行参数
 
 **优势**:
 - 无需替换原始 BetterGI.exe 文件
 - 保持原文件完整性
 - 用户可正常更新 BetterGI
-- 纯本地 API，性能开销极小 (~1ms)
+- 纯本地 API，性能开销极小
 
 ### 2.3 进程监控与守护
 
-**监控间隔**: 默认 5 秒 (可调整)
+**监控间隔**: 默认 5 秒 (可调整 1-999 秒)
 
 **监控逻辑**: 每次循环先等待监控间隔，再执行检测
 
@@ -60,26 +62,15 @@
    - 检测 `GenshinImpact.exe` 是否存在
    - 任一存在则视为游戏正在运行
 
-2. **BetterGI.exe 未运行处理**:
-   - 实时获取当前 BetterGI.exe 进程的启动命令行（通过 NtQueryInformationProcess 读取 PEB）
-   - 连续检测丢失次数达到阈值时:
-     - 使用获取到的启动命令启动 BetterGI.exe
-     - 记录日志
+3. **BetterGI.exe 未运行处理**:
+   - 实时获取当前 BetterGI.exe 进程的启动命令行（通过 PEB 读取）
+   - 连续检测丢失次数达到阈值时使用获取到的启动命令重启
    - 未达到阈值时只记录警告
 
-3. **游戏退出处理**:
+4. **游戏退出处理**:
    - 当 `YuanShen.exe` 和 `GenshinImpact.exe` 均不存在时
    - 通过路径匹配终止 `BetterGI.exe` 进程（防止误终止同名进程）
-   - 重置丢失计数
-   - 立即自动重启 `BetterGI.exe`（重新获取启动命令）
-   - 记录日志
-
-4. **BetterGI.exe 崩溃处理**:
-   - 定期检查 `BetterGI.exe` 进程是否存活
-   - 若指定路径的 BetterGI.exe 不存在但守护进程在运行
-   - 增加丢失计数
-   - 连续丢失达到阈值时重新获取启动命令并重启
-   - 记录日志
+   - 立即自动重启 `BetterGI.exe`
 
 5. **BetterGI.exe 独立运行**:
    - 启动 BetterGI.exe 时使用 `cmd /c start` 使其完全独立于守护进程
@@ -92,84 +83,51 @@
 2. 程序启动时检查同名进程是否已存在
 
 **处理逻辑**:
-1. 若检测到已存在守护进程:
-   - 实时获取当前 BetterGI.exe 的启动命令行
-   - 使用新参数启动 BetterGI.exe
-2. 若不存在:
-   - 创建互斥体
-   - 正常启动 BetterGI.exe
+1. 若检测到已存在守护进程，终止旧进程并重新创建互斥体
+2. 若不存在，创建互斥体，正常启动守护
 
-**说明**: 每次需要启动 BetterGI.exe 时，都会实时获取其最新启动命令。
+### 2.5 内存检测功能
 
-### 2.6 内存检测功能
-
-**检测对象**: BetterGI.exe 进程的内存使用情况
-
-**检测方式**: 基于系统整体内存的占用百分比
+**检测方式**: 使用 GlobalMemoryStatusEx API 获取系统内存（物理+虚拟）
 
 **默认阈值**:
-| 类型 | 默认百分比 | 描述 |
-|------|------------|------|
-| 内存阈值 | 95% | BetterGI进程内存占用超过系统总内存的此百分比则重启 |
+| 类型 | 默认值 | 描述 |
+|------|--------|------|
+| 内存阈值 | 95% | 系统总内存（物理+虚拟）占用百分比 |
 
-**配置方式**: 无参数启动时显示命令行设置界面，可自定义百分比阈值 (1-100%)
+**配置范围**: 1-100%
 
 **处理逻辑**:
-1. 在监控循环中定期检测 BetterGI.exe 进程内存使用 (工作集和虚拟内存取较大值)
-2. 计算系统总内存，根据百分比计算阈值
-3. 若内存超出阈值:
-   - 记录警告日志 (包含当前内存使用量和阈值)
-   - 通过路径匹配终止 BetterGI.exe 进程（防止误终止同名进程）
-   - 等待一段时间后重启 BetterGI.exe（重新获取启动命令）
-   - 记录重启日志
+1. 在监控循环中调用 GlobalMemoryStatusEx API 获取内存信息
+2. 计算系统总内存 = 物理内存 + 虚拟内存
+3. 若内存超出阈值，通过路径匹配终止并重启 BetterGI.exe
+4. 记录警告日志和重启日志
 
-**日志示例**:
-```
-[2026-04-11 14:40:00.123] [WARN] BetterGI.exe 内存超限: 12288MB (阈值=12288MB, 95%)
-[2026-04-11 14:40:00.456] [INFO] 正在终止并重启 BetterGI.exe...
-```
-
-### 2.7 日志系统
+### 2.6 日志系统
 
 **日志文件**:
-- 命名格式: `BGI_guard{日期}.log`
-- 例如: `BGI_guard20260411.log`
+- 命名格式: `BGI_guard{yyyyMMdd}.log`
 - 存放位置: 与可执行文件同目录
 - **按日追加**，每天生成新的日志文件
+- **UTF8 编码**
 
 **日志内容**:
 - 时间戳 (精确到毫秒)
-- 日志级别: [INFO] / [WARN] / [ERROR]
+- 版本号: `[BGIguard_v{x.x}]`
+- 日志级别: `[INFO]` / `[WARN]` / `[ERROR]`
 - 日志消息
 
 **自动清理**:
 - 日志文件数量超过 7 个时自动删除旧日志
-- 确保磁盘空间合理使用
 
 **日志示例**:
 ```
-[2026-04-11 14:30:00.123] [BGIguard_v1.0] [INFO] BGIguard 启动成功
-[2026-04-11 14:30:00.456] [BGIguard_v1.0] [INFO] 已获取 BetterGI.exe 启动命令
-[2026-04-11 14:30:05.789] [BGIguard_v1.0] [INFO] BetterGI.exe 已启动, PID: 12345
-[2026-04-11 14:35:00.001] [BGIguard_v1.0] [WARN] 检测到游戏进程退出
-[2026-04-11 14:35:00.123] [BGIguard_v1.0] [INFO] 正在重启 BetterGI.exe...
+[2026-04-15 14:30:00.123] [BGIguard_v1.0] [INFO] BGIguard 启动成功
+[2026-04-15 14:30:00.456] [BGIguard_v1.0] [INFO] BetterGI路径: D:\Games\BetterGI\BetterGI.exe
+[2026-04-15 14:30:05.789] [BGIguard_v1.0] [INFO] 检测 14:30:05 | 内存: 45% | BetterGI: 运行 | 游戏: YuanShen
+[2026-04-15 14:35:00.001] [BGIguard_v1.0] [WARN] BetterGI.exe 丢失 (第 1 次)
+[2026-04-15 14:35:10.123] [BGIguard_v1.0] [INFO] 连续丢失达到阈值，正在重启...
 ```
-
----
-
-### 3.2 项目结构
-
-```
-BGIguard/
-├── BGIguard.csproj
-├── Program.cs
-└── Assets/icon.ico
-```
-
-### 3.3 依赖项
-
-- .NET 8.0 内置库
-- P/Invoke (NtQueryInformationProcess, ReadProcessMemory)
 
 ---
 
@@ -186,13 +144,18 @@ BGIguard/
 ```
 BGIguard/
 ├── BGIguard.csproj
-└── Program.cs
+├── Program.cs
+└── Assets/icon.ico (可选)
 ```
 
 ### 3.3 依赖项
 
 - .NET 8.0 内置库
-- P/Invoke (NtQueryInformationProcess, ReadProcessMemory)
+- P/Invoke API:
+  - NtQueryInformationProcess (ntdll.dll)
+  - ReadProcessMemory (kernel32.dll)
+  - GlobalMemoryStatusEx (kernel32.dll)
+  - OpenProcess / CloseHandle (kernel32.dll)
 
 ### 3.4 发布命令
 
@@ -211,44 +174,56 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
          │
          ▼
 ┌─────────────────────────────────────────────────┐
-│           守护主循环                         │
-├─────────────────────────────────────────────────┤
-│ 1. 创建互斥体 (单实例保护)                   │
-│ 2. 检测 BetterGI.exe 是否存在                 │
-│ 3. 若不存在则实时获取启动命令并启动          │
-│ 4. 进入监控循环:                              │
-│    - 检查 BetterGI.exe 是否存在                    │
-│    - 检查 BetterGI.exe 内存使用                    │
-│    - 检查游戏进程是否存在                     │
-│    - 若需重启则重新获取启动命令               │
-│    - 等待监控间隔                              │
-└─────────────────────────────────────────────┘
+│ 1. 加载配置 (JSON 格式)                         │
+│ 2. 检测 BetterGI.exe 路径                       │
+│ 3. 处理命令行参数                               │
+│ 4. 创建互斥体 (单实例保护)                      │
+│ 5. 启动 BetterGI.exe                            │
+│ 6. 进入监控循环:                                │
+│    - 等待监控间隔                               │
+│    - 获取 BetterGI 进程信息                     │
+│    - 检查游戏进程                               │
+│    - 检查系统内存                               │
+│    - 判断是否需要重启                          │
+└─────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## 5. 配置说明
 
-**设置方式**: 双击 `BGIguard.exe` 或 `BetterGI.exe` 无参数启动时，会显示命令行设置界面
+**配置文件**: `BGIguard_config.json` (自动生成，UTF8 编码)
+
+**配置结构**:
+```json
+{
+  "BetterGiPath": "D:\\Games\\BetterGI\\BetterGI.exe",
+  "MemoryPercent": 95,
+  "MonitorInterval": 5,
+  "MissingCount": 2,
+  "SkipSetup": false
+}
+```
 
 **可配置项**:
 | 配置项 | 默认值 | 范围 | 描述 |
 |--------|--------|------|------|
-| BetterGI路径 | 自动检测 | 有效路径 | BetterGI.exe 所在目录 |
-| 内存阈值 | 95% | 1-100% | 系统整体内存占用百分比 |
-| 监控间隔 | 5秒 | 1-999 | 守护循环检测间隔 |
-| 丢失计数阈值 | 2次 | 1-10 | 连续检测丢失进程次数才触发重启 |
-| 跳过设置 | 关闭 | 开/关 | 每次启动是否跳过设置界面 |
+| BetterGiPath | 自动检测 | 有效路径 | BetterGI.exe 完整路径 |
+| MemoryPercent | 95% | 1-100% | 系统整体内存占用百分比 |
+| MonitorInterval | 5秒 | 1-999 | 守护循环检测间隔 |
+| MissingCount | 2次 | 1-10 | 连续检测丢失进程次数才触发重启 |
+| SkipSetup | false | true/false | 每次启动是否跳过设置界面 |
 
 **启动检测逻辑**:
 1. 程序启动时先检测自身目录下是否存在 `BetterGI.exe`
 2. 若存在则使用该路径
-3. 若不存在则检查配置文件中的 BetterGI路径
+3. 若不存在则检查配置文件中的 BetterGiPath
 4. 若配置文件也无路径，则显示设置界面要求用户设置
 
-**拖拽支持**:
-- 在设置界面中，可直接将 BetterGI.exe 文件拖入输入框
-- 拖拽会自动提取文件所在目录并填充路径
+**配置值验证**:
+- MemoryPercent: 超出范围时恢复默认值 95
+- MonitorInterval: <= 0 时恢复默认值 5
+- MissingCount: 超出范围时恢复默认值 2
 
 **命令行用法**:
 ```
@@ -265,19 +240,31 @@ BGIguard.exe help               显示帮助
 
 **交互式菜单**:
 无参数启动时显示交互式菜单，可选择：
-1. 修改内存阈值
-2. 修改监控间隔
-3. 修改丢失计数阈值
-4. 启动守护进程
-5. 跳过设置直接启动（设置后下次启动将直接进入守护）
-6. 重置配置
-7. 退出
-
-**配置文件**: `BGIguard_config.ini` (自动生成)
+1. 修改 BetterGI 路径
+2. 修改内存阈值
+3. 修改监控间隔
+4. 修改丢失计数阈值
+5. 启动守护进程
+6. 跳过设置直接启动
+7. 重置配置
+8. 退出
 
 ---
 
-## 6. 注意事项
+## 6. 代码优化说明
+
+本项目已进行以下代码优化：
+
+1. **字符串比较优化**: 使用 `StringComparison.OrdinalIgnoreCase` 替代 `ToLower()`，避免字符串分配
+2. **进程遍历合并**: 新增 `GetBetterGiInfo()` 方法，一次遍历同时获取进程状态和命令行
+3. **内存 API 优化**: 使用 `GlobalMemoryStatusEx` 替代 WMI 查询，提升性能
+4. **配置缓存**: `LoadConfig()` 增加配置缓存，减少文件 IO
+5. **配置值验证**: 加载配置时验证并修正不合理值
+6. **日志编码**: 明确指定 UTF8 编码，避免编码问题
+
+---
+
+## 7. 注意事项
 
 1. **管理员权限**: 若目录无写权限，可能需要以管理员身份运行
 2. **API 权限**: 需要 PROCESS_VM_READ 权限读取目标进程内存
@@ -286,31 +273,33 @@ BGIguard.exe help               显示帮助
 
 ---
 
-## 7. 常见问题
+## 8. 常见问题
 
 | 现象 | 解决 |
-|---|---|
-| 启动后未启动 BGI | 检查同目录是否存在 `BetterGI.exe` 和 `BetterGI.exe`；查看日志报错 |
+|------|------|
+| 启动后未启动 BetterGI | 检查同目录是否存在 `BetterGI.exe`；查看日志报错 |
 | 重复启动多个窗口 | 守护器自带单实例保护，只会运行一个实例 |
 | 日志暴涨 | 手动删除 `BGI_guard*.log` 即可，后续版本会自动轮转 |
-| 关闭游戏后 BGI 还在运行 | **正常现象**：守护器检测到游戏进程消失后会自动终止 BGI，待下次启动游戏时恢复运行。如不希望此行为，请直接退出守护器。 |
+| 关闭游戏后 BetterGI 还在运行 | **正常现象**：守护器检测到游戏进程消失后会自动终止 BetterGI，待下次启动游戏时恢复运行 |
+| 配置文件格式错误 | 运行 `BGIguard.exe reset` 重置配置文件 |
 
 ---
 
-## 8. 免责声明
+## 9. 免责声明
 
 本守护器仅做**进程守护**，不对 `BetterGI.exe` 内部行为负责。  
 使用即视为同意：因 BetterGI 本身或其插件导致的任何封号、掉线、损坏，与本项目无关。
 
 ---
 
-## 9. 验收标准
+## 10. 验收标准
 
-- [ ] 通过 NtQueryInformationProcess 获取 BetterGI.exe 启动命令
-- [ ] 启动 BetterGI.exe 时正确传递参数
-- [ ] 游戏进程退出后能自动重启 BetterGI.exe
-- [ ] BetterGI.exe 崩溃后能自动重启
-- [ ] 内存超限时能自动重启 BetterGI.exe
-- [ ] 防止多开守护程序（单实例保护）
-- [ ] 日志文件正常写入
-- [ ] 单文件发布后可在目标机器运行
+- [x] 通过 NtQueryInformationProcess 获取 BetterGI.exe 启动命令
+- [x] 启动 BetterGI.exe 时正确传递参数
+- [x] 游戏进程退出后能自动重启 BetterGI.exe
+- [x] BetterGI.exe 崩溃后能自动重启
+- [x] 内存超限时能自动重启 BetterGI.exe
+- [x] 防止多开守护程序（单实例保护）
+- [x] 日志文件正常写入（UTF8 编码）
+- [x] 配置文件使用 JSON 格式
+- [x] 单文件发布后可在目标机器运行
