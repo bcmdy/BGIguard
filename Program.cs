@@ -968,41 +968,29 @@ class Program
         if (string.IsNullOrWhiteSpace(fullCommandLine))
             return string.Empty;
 
-        string cmd = fullCommandLine.Trim();
+        // 策略：先找 .exe，再找参数
+        int exeIndex = fullCommandLine.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
 
-        // 处理带引号的情况: "E:\YS\BetterGI\BetterGI.exe" --startOneDragon test
-        if (cmd.StartsWith('"'))
-        {
-            int firstQuoteEnd = cmd.IndexOf('"', 1);
-            if (firstQuoteEnd > 0)
-            {
-                string afterFirstArg = cmd.Substring(firstQuoteEnd + 1).Trim();
-                return afterFirstArg.Replace("\"", "").Trim();
-            }
-        }
-
-        // 处理不带引号的情况: C:\Program Files\BetterGI\BetterGI.exe --startOneDragon
-        // 找到 .exe 后第一个空格的位置
-        int exeIndex = cmd.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
         if (exeIndex > 0)
         {
-            // .exe 后面可能紧跟参数或空格
-            int afterExe = exeIndex + 4;
-            if (afterExe < cmd.Length)
+            // 找到 .exe 后的第一个非空格字符
+            int argStart = exeIndex + 4; // 跳过 ".exe"
+
+            // 跳过空格
+            while (argStart < fullCommandLine.Length &&
+                   fullCommandLine[argStart] == ' ')
             {
-                // 跳过可能的空格
-                int spaceIndex = cmd.IndexOf(' ', afterExe);
-                if (spaceIndex > 0)
-                {
-                    return cmd.Substring(spaceIndex + 1).Trim();
-                }
+                argStart++;
             }
-            // 如果 .exe 是最后一个，没有参数
-            return string.Empty;
+
+            if (argStart < fullCommandLine.Length)
+            {
+                return fullCommandLine.Substring(argStart).Trim();
+            }
         }
 
-        // 如果没有 .exe，使用原来的空格分割方式
-        int firstSpace = cmd.IndexOf(' ');
-        return firstSpace > 0 ? cmd.Substring(firstSpace + 1).Trim() : string.Empty;
+        // 备用：找第一个空格（无 .exe 的情况）
+        int firstSpace = fullCommandLine.IndexOf(' ');
+        return firstSpace > 0 ? fullCommandLine.Substring(firstSpace + 1).Trim() : string.Empty;
     }
 }
