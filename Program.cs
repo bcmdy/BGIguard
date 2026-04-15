@@ -94,9 +94,21 @@ class Program
         public bool SkipSetup { get; set; } = false;
     }
 
-    // PEB 偏移量
-    private static readonly int PEB_OFFSET = IntPtr.Size == 8 ? 0x20 : 0x10;
-    private static readonly int CMDLINE_OFFSET = IntPtr.Size == 8 ? 0x70 : 0x40;
+    [DllImport("ntdll.dll")]
+    private static extern IntPtr RtlGetCurrentPeb();
+
+    // PEB 偏移量（动态获取）
+    private static readonly int PEB_OFFSET;
+    private static readonly int CMDLINE_OFFSET;
+
+    static Program()
+    {
+        // PEB 偏移量（基于 Windows 系统架构）
+        // ProcessParameters 在 PEB 中的偏移量
+        PEB_OFFSET = IntPtr.Size == 8 ? 0x20 : 0x10;
+        // CommandLine 在 ProcessParameters 中的偏移量
+        CMDLINE_OFFSET = IntPtr.Size == 8 ? 0x70 : 0x40;
+    }
 
     // ============== 全局变量 ==============
     private static string _exeDirectory = null!;
