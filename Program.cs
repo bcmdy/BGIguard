@@ -82,7 +82,17 @@ class Program
     private const string GuardFileName = "BGIguard.exe";
     private const string BetterGiExeName = "BetterGI.exe";
     private const string LogFilePrefix = "BGI_guard";
-    private static string ConfigFilePath => Path.Combine(_exeDirectory, "BGIguard_config.ini");
+    private static string ConfigFilePath => Path.Combine(_exeDirectory, "BGIguard_config.json");
+
+    // 配置类
+    private class Config
+    {
+        public string BetterGiPath { get; set; } = "";
+        public int MemoryPercent { get; set; } = 95;
+        public int MonitorInterval { get; set; } = 5;
+        public int MissingCount { get; set; } = 2;
+        public bool SkipSetup { get; set; } = false;
+    }
 
     // PEB 偏移量
     private static readonly int PEB_OFFSET = IntPtr.Size == 8 ? 0x20 : 0x10;
@@ -110,6 +120,7 @@ class Program
 
     // 配置缓存
     private static (string betterGiPath, int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup)? _configCache = null;
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     // 获取显示版本
     private static string GetDisplayVersion()
@@ -505,46 +516,18 @@ class Program
         if (_configCache.HasValue)
             return _configCache.Value;
 
-        string betterGiPath = string.Empty;
-        int memoryPercent = 95;
-        int monitorIntervalSeconds = 5;
-        int missingCountThreshold = 2;
-        bool skipSetup = false;
-
+        var config = new Config();
         try
         {
             if (File.Exists(ConfigFilePath))
             {
-                var lines = File.ReadAllLines(ConfigFilePath);
-                foreach (var line in lines)
-                {
-                    var parts = line.Split('=');
-                    if (parts.Length != 2) continue;
-
-                    switch (parts[0])
-                    {
-                        case "BetterGiPath":
-                            betterGiPath = parts[1];
-                            break;
-                        case "MemoryPercent":
-                            int.TryParse(parts[1], out memoryPercent);
-                            break;
-                        case "MonitorInterval":
-                            int.TryParse(parts[1], out monitorIntervalSeconds);
-                            break;
-                        case "MissingCount":
-                            int.TryParse(parts[1], out missingCountThreshold);
-                            break;
-                        case "SkipSetup":
-                            skipSetup = parts[1] == "1";
-                            break;
-                    }
-                }
+                var json = File.ReadAllText(ConfigFilePath);
+                config = System.Text.Json.JsonSerializer.Deserialize<Config>(json) ?? new Config();
             }
         }
         catch { }
 
-        var result = (betterGiPath, memoryPercent, monitorIntervalSeconds, missingCountThreshold, skipSetup);
+        var result = (config.BetterGiPath, config.MemoryPercent, config.MonitorInterval, config.MissingCount, config.SkipSetup);
         _configCache = result;
         return result;
     }
@@ -554,17 +537,26 @@ class Program
     /// </summary>
     private static void SaveConfig(int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup)
     {
-        _configCache = null; // 清除缓存
-        var config = LoadConfig();
-        var newConfig = new Dictionary<string, string>
+        _configCache = null;
+        var config = new Config
         {
-            { "BetterGiPath", string.IsNullOrEmpty(config.betterGiPath) ? "" : config.betterGiPath },
-            { "MemoryPercent", memoryPercent.ToString() },
-            { "MonitorInterval", monitorIntervalSeconds.ToString() },
-            { "MissingCount", missingCountThreshold.ToString() },
-            { "SkipSetup", skipSetup ? "1" : "0" }
+            MemoryPercent = memoryPercent,
+            MonitorInterval = monitorIntervalSeconds,
+            MissingCount = missingCountThreshold,
+            SkipSetup = skipSetup
         };
-        File.WriteAllLines(ConfigFilePath, newConfig.Select(kv => $"{kv.Key}={kv.Value}"));
+        var existing = LoadConfig();
+        config.BetterGiPath = existing.betterGiPath;
+        SaveConfigFile(config);
+    }
+
+    /// <summary>
+    /// 保存配置文件
+    /// </summary>
+    private static void SaveConfigFile(Config config)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(config, JsonOptions);
+        File.WriteAllText(ConfigFilePath, json);
     }
 
     /// <summary>
@@ -572,17 +564,17 @@ class Program
     /// </summary>
     private static void SaveConfigPath(string path)
     {
-        _configCache = null; // 清除缓存
-        var config = LoadConfig();
-        var newConfig = new Dictionary<string, string>
+        _configCache = null;
+        var existing = LoadConfig();
+        var config = new Config
         {
-            { "BetterGiPath", path },
-            { "MemoryPercent", config.memoryPercent.ToString() },
-            { "MonitorInterval", config.monitorIntervalSeconds.ToString() },
-            { "MissingCount", config.missingCountThreshold.ToString() },
-            { "SkipSetup", config.skipSetup ? "1" : "0" }
+            BetterGiPath = path,
+            MemoryPercent = existing.memoryPercent,
+            MonitorInterval = existing.monitorIntervalSeconds,
+            MissingCount = existing.missingCountThreshold,
+            SkipSetup = existing.skipSetup
         };
-        File.WriteAllLines(ConfigFilePath, newConfig.Select(kv => $"{kv.Key}={kv.Value}"));
+        SaveConfigFile(config);
     }
 
     /// <summary>
