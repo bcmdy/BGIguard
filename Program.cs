@@ -36,6 +36,23 @@ class Program
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CloseHandle(IntPtr hObject);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MEMORYSTATUSEX
+    {
+        public uint dwLength;
+        public uint dwMemoryLoad;
+        public ulong ullTotalPhys;
+        public ulong ullAvailPhys;
+        public ulong ullTotalPageFile;
+        public ulong ullAvailPageFile;
+        public ulong ullTotalVirtual;
+        public ulong ullAvailVirtual;
+        public ulong ullAvailExtendedVirtual;
+    }
+
     private const int PROCESS_QUERY_INFORMATION = 0x0400;
     private const int PROCESS_VM_READ = 0x0010;
     private const int ProcessBasicInformation = 0;
@@ -83,13 +100,16 @@ class Program
     private static readonly string[] GameProcessNames = { "YuanShen", "GenshinImpact" };
 
     // 运行时配置
-    private static int _monitorIntervalMs = 8000;
+    private static int _monitorIntervalMs = 5000;
     private static int _memoryPercent = 95;
     private static int _missingCountThreshold = 2;
     private static bool _skipSetup = false;
 
     // 丢失计数
     private static int _missingCount = 0;
+
+    // 配置缓存
+    private static (string betterGiPath, int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup)? _configCache = null;
 
     // 获取显示版本
     private static string GetDisplayVersion()
@@ -166,8 +186,8 @@ class Program
 
         // 启动后立即缓存启动命令
         Thread.Sleep(500); // 等待进程启动
-        string? initialCommand = GetBetterGiCommandLine();
-        if (initialCommand != null)
+        var (exists, initialCommand) = GetBetterGiInfo();
+        if (exists && initialCommand != null)
         {
             _cachedCommand = ExtractArgs(initialCommand);
             Log("INFO", $"已缓存启动命令: {_cachedCommand}");
@@ -478,10 +498,13 @@ class Program
     }
 
     /// <summary>
-    /// 加载配置
+    /// 加载配置（带缓存）
     /// </summary>
     private static (string betterGiPath, int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup) LoadConfig()
     {
+        if (_configCache.HasValue)
+            return _configCache.Value;
+
         string betterGiPath = string.Empty;
         int memoryPercent = 95;
         int monitorIntervalSeconds = 5;
@@ -521,7 +544,9 @@ class Program
         }
         catch { }
 
-        return (betterGiPath, memoryPercent, monitorIntervalSeconds, missingCountThreshold, skipSetup);
+        var result = (betterGiPath, memoryPercent, monitorIntervalSeconds, missingCountThreshold, skipSetup);
+        _configCache = result;
+        return result;
     }
 
     /// <summary>
@@ -529,6 +554,7 @@ class Program
     /// </summary>
     private static void SaveConfig(int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup)
     {
+        _configCache = null; // 清除缓存
         var config = LoadConfig();
         var newConfig = new Dictionary<string, string>
         {
@@ -546,6 +572,7 @@ class Program
     /// </summary>
     private static void SaveConfigPath(string path)
     {
+        _configCache = null; // 清除缓存
         var config = LoadConfig();
         var newConfig = new Dictionary<string, string>
         {
@@ -640,13 +667,12 @@ class Program
     {
         if (string.IsNullOrEmpty(_betterGiPath)) return;
 
-        string targetPath = _betterGiPath.ToLower();
         foreach (var process in Process.GetProcessesByName(BetterGiExeName.Replace(".exe", "")))
         {
             try
             {
-                string? modulePath = process.MainModule?.FileName?.ToLower();
-                if (modulePath == targetPath)
+                string? modulePath = process.MainModule?.FileName;
+                if (string.Equals(modulePath, _betterGiPath, StringComparison.OrdinalIgnoreCase))
                 {
                     process.Kill();
                     process.WaitForExit(3000);
@@ -670,9 +696,9 @@ class Program
 
             try
             {
-                // 1. 获取 BetterGI 进程命令行并缓存
-                string? commandLine = GetBetterGiCommandLine();
-                if (commandLine != null)
+                // 1. 获取 BetterGI 进程信息并缓存（合并遍历）
+                var (betterGiRunning, commandLine) = GetBetterGiInfo();
+                if (betterGiRunning && commandLine != null)
                 {
                     string extractedArgs = ExtractArgs(commandLine);
                     if (extractedArgs != _cachedCommand)
@@ -681,9 +707,6 @@ class Program
                         Log("INFO", $"已缓存启动命令: {_cachedCommand}");
                     }
                 }
-
-                // 2. 检查 BetterGI.exe 是否存在（按路径匹配）
-                bool betterGiRunning = IsBetterGiRunningByPath();
 
                 // 3. 检查游戏进程
                 bool gameRunning = IsAnyGameRunning();
@@ -761,13 +784,12 @@ class Program
     {
         if (string.IsNullOrEmpty(_betterGiPath)) return false;
 
-        string targetPath = _betterGiPath.ToLower();
         foreach (var process in Process.GetProcessesByName(BetterGiExeName.Replace(".exe", "")))
         {
             try
             {
-                string? modulePath = process.MainModule?.FileName?.ToLower();
-                if (modulePath == targetPath)
+                string? modulePath = process.MainModule?.FileName;
+                if (string.Equals(modulePath, _betterGiPath, StringComparison.OrdinalIgnoreCase))
                     return true;
             }
             catch { }
@@ -776,26 +798,25 @@ class Program
     }
 
     /// <summary>
-    /// 获取 BetterGI 进程的命令行
+    /// 获取 BetterGI 进程的信息（合并遍历）
     /// </summary>
-    private static string? GetBetterGiCommandLine()
+    private static (bool exists, string? commandLine) GetBetterGiInfo()
     {
-        if (string.IsNullOrEmpty(_betterGiPath)) return null;
+        if (string.IsNullOrEmpty(_betterGiPath)) return (false, null);
 
-        string targetPath = _betterGiPath.ToLower();
         foreach (var process in Process.GetProcessesByName(BetterGiExeName.Replace(".exe", "")))
         {
             try
             {
-                string? modulePath = process.MainModule?.FileName?.ToLower();
-                if (modulePath == targetPath)
+                string? modulePath = process.MainModule?.FileName;
+                if (string.Equals(modulePath, _betterGiPath, StringComparison.OrdinalIgnoreCase))
                 {
-                    return GetProcessCommandLine(process.Id);
+                    return (true, GetProcessCommandLine(process.Id));
                 }
             }
             catch { }
         }
-        return null;
+        return (false, null);
     }
 
     /// <summary>
@@ -836,34 +857,18 @@ class Program
     }
 
     /// <summary>
-    /// 获取系统内存（物理+虚拟）
+    /// 获取系统内存（物理+虚拟），使用 GlobalMemoryStatusEx API
     /// </summary>
     private static (long totalMB, long usedMB, long physicalMB, long virtualMB) GetSystemMemory()
     {
-        try
+        var memStatus = new MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>() };
+        if (GlobalMemoryStatusEx(ref memStatus))
         {
-            using var searcher = new System.Management.ManagementObjectSearcher(
-                "SELECT TotalVisibleMemorySize, FreePhysicalMemory, TotalVirtualMemorySize, FreeVirtualMemory FROM Win32_OperatingSystem");
-            foreach (var obj in searcher.Get())
-            {
-                // 物理内存
-                long totalPhysicalKB = Convert.ToInt64(obj["TotalVisibleMemorySize"]);
-                long freePhysicalKB = Convert.ToInt64(obj["FreePhysicalMemory"]);
-                long usedPhysicalKB = totalPhysicalKB - freePhysicalKB;
-
-                // 虚拟内存
-                long totalVirtualKB = Convert.ToInt64(obj["TotalVirtualMemorySize"]);
-                long freeVirtualKB = Convert.ToInt64(obj["FreeVirtualMemory"]);
-                long usedVirtualKB = totalVirtualKB - freeVirtualKB;
-
-                // 总内存 = 物理 + 虚拟
-                long totalKB = totalPhysicalKB + totalVirtualKB;
-                long usedKB = usedPhysicalKB + usedVirtualKB;
-
-                return (totalKB / 1024, usedKB / 1024, totalPhysicalKB / 1024, totalVirtualKB / 1024);
-            }
+            // 总内存 = 物理 + 虚拟
+            ulong totalKB = (memStatus.ullTotalPhys + memStatus.ullTotalVirtual) / 1024;
+            ulong usedKB = (memStatus.ullTotalPhys - memStatus.ullAvailPhys + memStatus.ullTotalVirtual - memStatus.ullAvailVirtual) / 1024;
+            return ((long)totalKB, (long)usedKB, (long)(memStatus.ullTotalPhys / 1024), (long)(memStatus.ullTotalVirtual / 1024));
         }
-        catch { }
         return (32 * 1024 * 1024, 0, 16 * 1024 * 1024, 16 * 1024 * 1024);
     }
 
