@@ -47,3 +47,6 @@ x86/
 bld/
 [Bb]in/
 [Oo]bj/
+
+# Claude code
+.claude/
