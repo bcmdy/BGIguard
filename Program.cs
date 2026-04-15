@@ -164,6 +164,10 @@ class Program
             Console.WriteLine("请设置 BetterGI.exe 路径:");
             Console.Write("> ");
             string? pathInput = Console.ReadLine();
+            if (!string.IsNullOrEmpty(pathInput))
+            {
+                pathInput = pathInput.Trim().Trim('"');
+            }
             while (string.IsNullOrWhiteSpace(pathInput) || !File.Exists(pathInput))
             {
                 Console.WriteLine("文件不存在，请重新输入 BetterGI.exe 路径:");
@@ -259,7 +263,7 @@ class Program
                     if (args[1].ToLower() == "path")
                     {
                         // 设置 BetterGI 路径
-                        string newPath = args[2].Trim('"');
+                        string newPath = args[2].Trim().Trim('"');
                         if (File.Exists(newPath))
                         {
                             SaveConfigPath(newPath);
@@ -363,6 +367,10 @@ class Program
                     Console.WriteLine("请设置 BetterGI.exe 路径:");
                     Console.Write("> ");
                     string? pathInput = Console.ReadLine();
+                    if (!string.IsNullOrEmpty(pathInput))
+                    {
+                        pathInput = pathInput.Trim().Trim('"');
+                    }
                     while (string.IsNullOrWhiteSpace(pathInput) || !File.Exists(pathInput))
                     {
                         Console.WriteLine("文件不存在，请重新输入:");
@@ -451,6 +459,10 @@ class Program
             case "1":
                 Console.Write("请输入 BetterGI.exe 路径（或拖入文件）: ");
                 string? pathInput = Console.ReadLine();
+                if (!string.IsNullOrEmpty(pathInput))
+                {
+                    pathInput = pathInput.Trim().Trim('"');
+                }
                 if (!string.IsNullOrWhiteSpace(pathInput) && File.Exists(pathInput))
                 {
                     SaveConfigPath(pathInput);
@@ -583,6 +595,11 @@ class Program
     /// </summary>
     private static void SaveConfigPath(string path)
     {
+        // 去除首尾引号，支持带引号的路径输入
+        if (!string.IsNullOrEmpty(path))
+        {
+            path = path.Trim().Trim('"');
+        }
         _configCache = null;
         var existing = LoadConfig();
         var config = new Config
@@ -733,8 +750,9 @@ class Program
                 string giStatus = betterGiRunning ? "运行" : $"未运行({_missingCount}/{_missingCountThreshold})";
                 Log("INFO", $"检测 {DateTime.Now:HH:mm:ss} | 内存: {usedPercent}% | BetterGI: {giStatus} | 游戏: {gameStatus}");
 
-                // 内存警告
-                if (usedPercent >= 85)
+                // 内存警告 (使用配置值-5作为阈值)
+                int memWarningThreshold = Math.Max(1, _memoryPercent - 5);
+                if (usedPercent >= memWarningThreshold)
                 {
                     Log("WARN", $"[内存警告] 已用: {usedMB}MB/{totalMB}MB ({usedPercent}%) | 物理: {physicalMB}MB | 虚拟: {virtualMB}MB");
                 }
@@ -868,7 +886,7 @@ class Program
     }
 
     /// <summary>
-    /// 获取系统内存（物理+虚拟），使用 GlobalMemoryStatusEx API
+    /// 获取系统内存（物理内存 + 页面文件）
     /// </summary>
     private static (long totalMB, long usedMB, long physicalMB, long virtualMB) GetSystemMemory()
     {
@@ -879,15 +897,25 @@ class Program
 
         if (GlobalMemoryStatusEx(ref memStatus))
         {
-            ulong totalKB = (memStatus.ullTotalPhys + memStatus.ullTotalVirtual) / 1024;
-            ulong usedKB = ((memStatus.ullTotalPhys - memStatus.ullAvailPhys) +
-                             (memStatus.ullTotalVirtual - memStatus.ullAvailVirtual)) / 1024;
+            // 物理内存
+            ulong totalPhysKB = memStatus.ullTotalPhys / 1024;
+            ulong usedPhysKB = (memStatus.ullTotalPhys - memStatus.ullAvailPhys) / 1024;
+
+            // 页面文件（虚拟内存）
+            ulong totalPageKB = memStatus.ullTotalPageFile / 1024;
+            ulong usedPageKB = (memStatus.ullTotalPageFile - memStatus.ullAvailPageFile) / 1024;
+
+            // 总内存 = 物理 + 页面文件（或者直接用 totalPageFile，因为它就是物理+页面文件）
+            // 注意：ullTotalPageFile 已经包含了物理内存，所以不需要再加 ullTotalPhys
+            ulong totalKB = totalPageKB;  // 这是系统总提交限制
+            ulong usedKB = usedPageKB;    // 这是系统总已用（物理已用 + 页面文件已用）
 
             return ((long)totalKB, (long)usedKB,
-                    (long)(memStatus.ullTotalPhys / 1024),
-                    (long)(memStatus.ullTotalVirtual / 1024));
+                    (long)totalPhysKB, (long)totalPageKB);
         }
-        return (32 * 1024 * 1024, 0, 16 * 1024 * 1024, 16 * 1024 * 1024);
+
+        Log("ERROR", "获取系统内存信息失败，使用默认值");
+        return (32 * 1024, 0, 32 * 1024, 16 * 1024);  // 修正默认值单位
     }
 
     /// <summary>
