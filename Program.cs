@@ -107,7 +107,11 @@ class Program
         Console.Title = $"BetterGI 进程守护 v{version} By:Bcmdy";
 
         // 加载配置
-        LoadConfig();
+        var initConfig = LoadConfig();
+        _skipSetup = initConfig.skipSetup;
+        _monitorIntervalMs = initConfig.monitorIntervalSeconds * 1000;
+        _memoryPercent = initConfig.memoryPercent;
+        _missingCountThreshold = initConfig.missingCountThreshold;
 
         // 检测 BetterGI.exe 路径
         if (!DetectBetterGiPath())
