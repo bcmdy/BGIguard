@@ -524,6 +524,13 @@ class Program
                 var json = File.ReadAllText(ConfigFilePath);
                 config = System.Text.Json.JsonSerializer.Deserialize<Config>(json) ?? new Config();
             }
+            // 验证并修正
+            if (config.MemoryPercent <= 0 || config.MemoryPercent > 100)
+                config.MemoryPercent = 95;
+            if (config.MonitorInterval <= 0)
+                config.MonitorInterval = 5;
+            if (config.MissingCount <= 0 || config.MissingCount > 10)
+                config.MissingCount = 2;
         }
         catch { }
 
