@@ -894,7 +894,7 @@ class Program
             {
                 string logFileName = $"{LogFilePrefix}{DateTime.Now:yyyyMMdd}.log";
                 string logPath = Path.Combine(_exeDirectory, logFileName);
-                File.AppendAllText(logPath, logMessage + Environment.NewLine);
+                File.AppendAllText(logPath, logMessage + Environment.NewLine, Encoding.UTF8);
                 CleanOldLogs();
             }
             catch { }
