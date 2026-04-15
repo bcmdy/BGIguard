@@ -592,9 +592,6 @@ class Program
             return;
         }
 
-        // 先终止可能已存在的 BetterGI.exe 进程（按路径匹配）
-        TerminateBetterGiProcessByPath();
-
         try
         {
             ProcessStartInfo startInfo = new ProcessStartInfo
@@ -659,9 +656,23 @@ class Program
                     _cachedCommand = commandLine;
                     Log("INFO", $"已缓存启动命令: {_cachedCommand}");
                 }
+                else if (commandLine == null && !string.IsNullOrEmpty(_cachedCommand))
+                {
+                    Log("WARN", "无法获取命令行，保持缓存");
+                }
 
                 // 2. 检查 BetterGI.exe 是否存在（按路径匹配）
                 bool betterGiRunning = IsBetterGiRunningByPath();
+
+                if (!betterGiRunning)
+                {
+                    Log("WARN", $"BetterGI 路径匹配失败: {_betterGiPath}");
+                    // 调试：列出所有 BetterGI 进程
+                    foreach (var p in Process.GetProcessesByName("BetterGI"))
+                    {
+                        try { Log("WARN", $"找到进程: {p.MainModule?.FileName}"); } catch { }
+                    }
+                }
 
                 // 3. 检查游戏进程
                 bool gameRunning = IsAnyGameRunning();
