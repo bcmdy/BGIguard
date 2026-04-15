@@ -628,7 +628,6 @@ class Program
 
             Process.Start(startInfo);
             Log("INFO", $"已启动 BetterGI.exe" + (string.IsNullOrEmpty(cmdArgs) ? "" : $" (参数: {cmdArgs})"));
-            Log("INFO", $"已启动 BetterGI.exe");
         }
         catch (Exception ex)
         {
@@ -677,7 +676,8 @@ class Program
                 string? commandLine = GetBetterGiCommandLine();
                 if (commandLine != null && commandLine != _cachedCommand)
                 {
-                    _cachedCommand = commandLine;
+                    // 提取参数部分（去掉可执行文件路径）
+                    _cachedCommand = ExtractArgs(commandLine);
                     Log("INFO", $"已缓存启动命令: {_cachedCommand}");
                 }
 
@@ -953,5 +953,37 @@ class Program
         {
             CloseHandle(hProcess);
         }
+    }
+
+    /// <summary>
+    /// 从完整命令行中提取参数部分（去掉可执行文件路径）
+    /// </summary>
+    private static string ExtractArgs(string fullCommandLine)
+    {
+        if (string.IsNullOrWhiteSpace(fullCommandLine))
+            return string.Empty;
+
+        // 命令行格式通常是: "E:\YS\BetterGI\BetterGI.exe" --param1 param2
+        // 第一个引号内的部分是可执行文件路径，后面的才是参数
+        int firstQuote = fullCommandLine.IndexOf('"');
+        if (firstQuote >= 0)
+        {
+            int secondQuote = fullCommandLine.IndexOf('"', firstQuote + 1);
+            if (secondQuote > firstQuote)
+            {
+                // 提取第一个引号后的内容到第二个引号之后的部分
+                string afterExe = fullCommandLine.Substring(secondQuote + 1).Trim();
+                return afterExe;
+            }
+        }
+
+        // 如果没有引号，尝试按空格分割
+        var parts = fullCommandLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length > 1)
+        {
+            return string.Join(" ", parts.Skip(1));
+        }
+
+        return string.Empty;
     }
 }
