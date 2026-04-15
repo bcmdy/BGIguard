@@ -152,8 +152,17 @@ class Program
         // 处理单实例保护
         HandleSingleInstance();
 
-        // 启动 BetterGI.exe
-        StartBetterGiProcess();
+        // 检查 BetterGI 是否已运行，若已运行则不重复启动
+        bool alreadyRunning = IsBetterGiRunningByPath();
+        if (!alreadyRunning)
+        {
+            // 未运行，启动 BetterGI.exe
+            StartBetterGiProcess();
+        }
+        else
+        {
+            Log("INFO", "BetterGI.exe 已在运行中，跳过启动");
+        }
 
         // 启动后立即缓存启动命令
         Thread.Sleep(500); // 等待进程启动
