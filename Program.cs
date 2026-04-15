@@ -356,7 +356,7 @@ class Program
         Console.WriteLine("  BGIguard.exe reset              重置配置为默认值");
         Console.WriteLine("  BGIguard.exe help               显示帮助");
         Console.WriteLine();
-        Console.WriteLine("默认值: 内存阈值=95%, 监控间隔=8秒, 丢失计数=2次, 跳过设置=否");
+        Console.WriteLine("默认值: 内存阈值=95%, 监控间隔=5秒, 丢失计数=2次, 跳过设置=否");
     }
 
     /// <summary>
@@ -484,7 +484,7 @@ class Program
     {
         string betterGiPath = string.Empty;
         int memoryPercent = 95;
-        int monitorIntervalSeconds = 8;
+        int monitorIntervalSeconds = 5;
         int missingCountThreshold = 2;
         bool skipSetup = false;
 
@@ -615,12 +615,13 @@ class Program
 
         try
         {
+            // 使用 cmd /c start 方式启动，这样可以创建一个独立的窗口
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
-                FileName = _betterGiPath,
-                Arguments = cmdArgs ?? string.Empty,
-                UseShellExecute = true,
-                WorkingDirectory = Path.GetDirectoryName(_betterGiPath)
+                FileName = "cmd.exe",
+                Arguments = $"/c start \"BetterGI\" \"{_betterGiPath}\" {cmdArgs}",
+                UseShellExecute = false,
+                CreateNoWindow = true
             };
 
             Process.Start(startInfo);
