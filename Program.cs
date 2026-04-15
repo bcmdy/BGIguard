@@ -697,7 +697,7 @@ class Program
                 var gameProcesses = GetRunningGameProcesses();
 
                 // 4. 检查系统内存
-                var (totalMB, usedMB) = GetSystemMemory();
+                var (totalMB, usedMB, physicalMB, virtualMB) = GetSystemMemory();
                 long memoryLimitMB = totalMB * _memoryPercent / 100;
                 int usedPercent = (int)(usedMB * 100 / Math.Max(1, totalMB));
 
@@ -709,7 +709,7 @@ class Program
                 // 内存警告
                 if (usedPercent >= 85)
                 {
-                    Log("WARN", $"[内存警告] 已用: {usedMB}MB/{totalMB}MB ({usedPercent}%) | 阈值: {_memoryPercent}%");
+                    Log("WARN", $"[内存警告] 已用: {usedMB}MB/{totalMB}MB ({usedPercent}%) | 物理: {physicalMB}MB | 虚拟: {virtualMB}MB");
                 }
 
                 // 判断是否需要重启
@@ -843,24 +843,35 @@ class Program
     }
 
     /// <summary>
-    /// 获取系统内存
+    /// 获取系统内存（物理+虚拟）
     /// </summary>
-    private static (long totalMB, long usedMB) GetSystemMemory()
+    private static (long totalMB, long usedMB, long physicalMB, long virtualMB) GetSystemMemory()
     {
         try
         {
             using var searcher = new System.Management.ManagementObjectSearcher(
-                "SELECT TotalVisibleMemorySize, FreePhysicalMemory FROM Win32_OperatingSystem");
+                "SELECT TotalVisibleMemorySize, FreePhysicalMemory, TotalVirtualMemorySize, FreeVirtualMemory FROM Win32_OperatingSystem");
             foreach (var obj in searcher.Get())
             {
-                long totalKB = Convert.ToInt64(obj["TotalVisibleMemorySize"]);
-                long freeKB = Convert.ToInt64(obj["FreePhysicalMemory"]);
-                long usedKB = totalKB - freeKB;
-                return (totalKB / 1024, usedKB / 1024);
+                // 物理内存
+                long totalPhysicalKB = Convert.ToInt64(obj["TotalVisibleMemorySize"]);
+                long freePhysicalKB = Convert.ToInt64(obj["FreePhysicalMemory"]);
+                long usedPhysicalKB = totalPhysicalKB - freePhysicalKB;
+
+                // 虚拟内存
+                long totalVirtualKB = Convert.ToInt64(obj["TotalVirtualMemorySize"]);
+                long freeVirtualKB = Convert.ToInt64(obj["FreeVirtualMemory"]);
+                long usedVirtualKB = totalVirtualKB - freeVirtualKB;
+
+                // 总内存 = 物理 + 虚拟
+                long totalKB = totalPhysicalKB + totalVirtualKB;
+                long usedKB = usedPhysicalKB + usedVirtualKB;
+
+                return (totalKB / 1024, usedKB / 1024, totalPhysicalKB / 1024, totalVirtualKB / 1024);
             }
         }
         catch { }
-        return (16 * 1024 * 1024, 0);
+        return (32 * 1024 * 1024, 0, 16 * 1024 * 1024, 16 * 1024 * 1024);
     }
 
     /// <summary>
