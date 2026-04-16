@@ -128,6 +128,7 @@ class Program
 
     // 丢失计数
     private static int _missingCount = 0;
+    private static int _gameExitCount = 0;
 
     // 配置缓存
     private static (string betterGiPath, int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup)? _configCache = null;
@@ -789,13 +790,28 @@ class Program
                     Log("INFO", "内存超限后已重启");
                 }
 
-                // 游戏退出后重启
+                // 游戏退出后重启（使用与 BetterGI 相同的计次阈值）
                 if (!gameRunning && betterGiRunning)
                 {
-                    Log("INFO", "游戏已退出，终止 BetterGI.exe");
-                    TerminateBetterGiProcessByPath();
-                    Thread.Sleep(RestartDelayMs);
-                    StartBetterGiProcess(_cachedCommand);
+                    _gameExitCount++;
+                    Log("WARN", $"游戏已退出 (第 {_gameExitCount} 次)");
+
+                    if (_gameExitCount >= _missingCountThreshold)
+                    {
+                        Log("INFO", "游戏退出达到阈值，终止 BetterGI.exe");
+                        TerminateBetterGiProcessByPath();
+                        Thread.Sleep(RestartDelayMs);
+                        StartBetterGiProcess(_cachedCommand);
+                        _gameExitCount = 0;
+                    }
+                }
+                else if (gameRunning)
+                {
+                    if (_gameExitCount > 0)
+                    {
+                        Log("INFO", "游戏已恢复，计数重置");
+                        _gameExitCount = 0;
+                    }
                 }
             }
             catch (Exception ex)
@@ -1041,26 +1057,28 @@ class Program
     }
 
     /// <summary>
-    /// 清理命令行参数中的多余引号（处理 cmd /c start 引发的引号问题）
+    /// 清理命令行参数中的多余引号
     /// </summary>
     private static string CleanCommandArgs(string args)
     {
         if (string.IsNullOrWhiteSpace(args))
             return "";
 
-        // 去除首尾空格和引号
         string cleaned = args.Trim();
 
-        // 去掉连续配对的引号，如 """ 或 "" ""
-        while (cleaned.StartsWith("\"\"") && cleaned.EndsWith("\"\""))
-        {
-            cleaned = cleaned[2..(cleaned.Length - 2)].Trim();
-        }
+        // 关键修复：如果清理后只剩下引号和空格，视为空参数
+        // 使用 Replace 去除所有引号后检查是否为空或仅空格
+        if (string.IsNullOrWhiteSpace(cleaned.Replace("\"", "")))
+            return "";
 
-        // 简单去除首尾引号
-        if (cleaned.Length >= 2 && cleaned[0] == '"' && cleaned[^1] == '"')
+        // 去除首尾配对的单个引号（循环处理多层嵌套）
+        while (cleaned.Length >= 2 && cleaned[0] == '"' && cleaned[^1] == '"')
         {
-            cleaned = cleaned[1..^1].Trim();
+            string inner = cleaned[1..^1].Trim();
+            // 如果去引号后变成空或只剩引号，停止剥离
+            if (string.IsNullOrWhiteSpace(inner.Replace("\"", "")))
+                break;
+            cleaned = inner;
         }
 
         return cleaned;
