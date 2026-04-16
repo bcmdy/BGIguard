@@ -71,7 +71,8 @@
 4. **游戏退出处理**:
    - 当 `YuanShen.exe` 和 `GenshinImpact.exe` 均不存在时
    - 通过路径匹配终止 `BetterGI.exe` 进程（防止误终止同名进程）
-   - 立即自动重启 `BetterGI.exe`
+   - 使用与 BetterGI 相同的丢失计数阈值（默认 3 次）
+   - 连续检测达到阈值才触发重启，未达到只记录警告
 
 5. **BetterGI.exe 独立运行**:
    - 启动 BetterGI.exe 时使用 `cmd /c start` 使其完全独立于守护进程
