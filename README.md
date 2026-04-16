@@ -40,7 +40,7 @@ BGIguard.exe help               # 显示帮助
 |--------|--------|
 | 内存阈值 | 95% |
 | 监控间隔 | 5秒 |
-| 丢失计数阈值 | 2次 |
+| 丢失计数阈值 | 3次 |
 
 ### 配置文件
 
@@ -51,7 +51,7 @@ BGIguard.exe help               # 显示帮助
   "BetterGiPath": "D:\\Games\\BetterGI\\BetterGI.exe",
   "MemoryPercent": 95,
   "MonitorInterval": 5,
-  "MissingCount": 2,
+  "MissingCount": 3,
   "SkipSetup": false
 }
 ```

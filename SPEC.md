@@ -55,7 +55,7 @@
 
 1. **进程丢失计数**:
    - 记录 BetterGI.exe 进程丢失的连续次数
-   - 连续丢失达到阈值（默认 2 次）才触发重启
+   - 连续丢失达到阈值（默认 3 次）才触发重启
    - 进程恢复后重置计数
 
 2. **游戏进程检测**:
@@ -206,7 +206,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
   "BetterGiPath": "D:\\Games\\BetterGI\\BetterGI.exe",
   "MemoryPercent": 95,
   "MonitorInterval": 5,
-  "MissingCount": 2,
+  "MissingCount": 3,
   "SkipSetup": false
 }
 ```
@@ -217,7 +217,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 | BetterGiPath | 自动检测 | 有效路径 | BetterGI.exe 完整路径 |
 | MemoryPercent | 95% | 1-100% | 系统整体内存占用百分比 |
 | MonitorInterval | 5秒 | 1-999 | 守护循环检测间隔 |
-| MissingCount | 2次 | 1-10 | 连续检测丢失进程次数才触发重启 |
+| MissingCount | 3次 | 1-10 | 连续检测丢失进程次数才触发重启 |
 | SkipSetup | false | true/false | 每次启动是否跳过设置界面 |
 
 **启动检测逻辑**:
@@ -229,7 +229,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 **配置值验证**:
 - MemoryPercent: 超出范围时恢复默认值 95
 - MonitorInterval: <= 0 时恢复默认值 5
-- MissingCount: 超出范围时恢复默认值 2
+- MissingCount: 超出范围时恢复默认值 3
 
 **命令行用法**:
 ```

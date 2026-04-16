@@ -90,7 +90,7 @@ class Program
         public string BetterGiPath { get; set; } = "";
         public int MemoryPercent { get; set; } = 95;
         public int MonitorInterval { get; set; } = 5;
-        public int MissingCount { get; set; } = 2;
+        public int MissingCount { get; set; } = 3;
         public bool SkipSetup { get; set; } = false;
     }
 
@@ -124,7 +124,7 @@ class Program
     // 运行时配置
     private static int _monitorIntervalMs = 5000;
     private static int _memoryPercent = 95;
-    private static int _missingCountThreshold = 2;
+    private static int _missingCountThreshold = 3;
     private static bool _skipSetup = false;
 
     // 丢失计数
@@ -554,7 +554,7 @@ class Program
             if (config.MonitorInterval <= 0)
                 config.MonitorInterval = 5;
             if (config.MissingCount <= 0 || config.MissingCount > 10)
-                config.MissingCount = 2;
+                config.MissingCount = 3;
         }
         catch { }
 
