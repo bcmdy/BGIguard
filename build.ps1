@@ -1,6 +1,6 @@
 # BGIguard Build Script (PowerShell)
 param(
-    [string]$Version = "2.1.0"
+    [string]$Version = "2.1.1"
 )
 
 $CONFIG = "Release"

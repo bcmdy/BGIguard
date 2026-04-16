@@ -1012,7 +1012,7 @@ class Program
     private static string ExtractArgs(string fullCommandLine)
     {
         if (string.IsNullOrWhiteSpace(fullCommandLine))
-            return string.Empty;
+            return "";
 
         // 策略：先找 .exe，再找参数
         int exeIndex = fullCommandLine.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
@@ -1031,12 +1031,38 @@ class Program
 
             if (argStart < fullCommandLine.Length)
             {
-                return fullCommandLine.Substring(argStart).Trim();
+                return CleanCommandArgs(fullCommandLine[argStart..]);
             }
         }
 
         // 备用：找第一个空格（无 .exe 的情况）
         int firstSpace = fullCommandLine.IndexOf(' ');
-        return firstSpace > 0 ? fullCommandLine.Substring(firstSpace + 1).Trim() : string.Empty;
+        return firstSpace > 0 ? CleanCommandArgs(fullCommandLine[(firstSpace + 1)..]) : "";
+    }
+
+    /// <summary>
+    /// 清理命令行参数中的多余引号（处理 cmd /c start 引发的引号问题）
+    /// </summary>
+    private static string CleanCommandArgs(string args)
+    {
+        if (string.IsNullOrWhiteSpace(args))
+            return "";
+
+        // 去除首尾空格和引号
+        string cleaned = args.Trim();
+
+        // 去掉连续配对的引号，如 """ 或 "" ""
+        while (cleaned.StartsWith("\"\"") && cleaned.EndsWith("\"\""))
+        {
+            cleaned = cleaned[2..(cleaned.Length - 2)].Trim();
+        }
+
+        // 简单去除首尾引号
+        if (cleaned.Length >= 2 && cleaned[0] == '"' && cleaned[^1] == '"')
+        {
+            cleaned = cleaned[1..^1].Trim();
+        }
+
+        return cleaned;
     }
 }
