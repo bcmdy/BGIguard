@@ -441,13 +441,13 @@ class Program
         Console.WriteLine();
 
         Console.WriteLine("请选择操作:");
-        Console.WriteLine("  1. 修改 BetterGI 路径");
-        Console.WriteLine("  2. 修改内存阈值");
-        Console.WriteLine("  3. 修改监控间隔");
-        Console.WriteLine("  4. 修改丢失计数阈值");
-        Console.WriteLine("  5. 启动守护进程");
-        Console.WriteLine("  6. 跳过设置直接启动");
-        Console.WriteLine("  7. 重置配置");
+        Console.WriteLine("  1. 修改 BetterGI 路径        (BetterGI.exe 完整路径)");
+        Console.WriteLine("  2. 修改内存阈值            (1-100%，超阈值重启)");
+        Console.WriteLine("  3. 修改监控间隔            (1-999秒，检测频率)");
+        Console.WriteLine("  4. 修改丢失计数阈值        (1-10次，连续退出触发重启)");
+        Console.WriteLine("  5. 启动守护进程            (进入守护监控模式)");
+        Console.WriteLine("  6. 跳过设置直接启动        (直接进入守护)");
+        Console.WriteLine("  7. 重置配置                (恢复默认设置)");
         Console.WriteLine("  8. 退出");
         Console.WriteLine();
 
@@ -457,7 +457,7 @@ class Program
         switch (input)
         {
             case "1":
-                Console.Write("请输入 BetterGI.exe 路径（或拖入文件）: ");
+                Console.Write("请输入 BetterGI.exe 路径（或拖入文件，可带引号）: ");
                 string? pathInput = Console.ReadLine();
                 if (!string.IsNullOrEmpty(pathInput))
                 {
