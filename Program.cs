@@ -79,7 +79,6 @@ class Program
     // ============== 配置常量 ==============
     private const int RestartDelayMs = 1000;
     private const int MaxLogFiles = 7;
-    private const string GuardFileName = "BGIguard.exe";
     private const string BetterGiExeName = "BetterGI.exe";
     private const string LogFilePrefix = "BGI_guard";
     private static string ConfigFilePath => Path.Combine(_exeDirectory, "BGIguard_config.json");
@@ -91,7 +90,7 @@ class Program
         public int MemoryPercent { get; set; } = 95;
         public int MonitorInterval { get; set; } = 5;
         public int MissingCount { get; set; } = 3;
-        public bool SkipSetup { get; set; } = false;
+        public bool SkipSetup { get; set; }
     }
 
     [DllImport("ntdll.dll")]
@@ -112,8 +111,8 @@ class Program
 
     // ============== 全局变量 ==============
     private static string _exeDirectory = null!;
-    private static string _betterGiPath = string.Empty;
-    private static string _cachedCommand = string.Empty;
+    private static string _betterGiPath = "";
+    private static string _cachedCommand = "";
     private static Mutex? _mutex;
     private static readonly object _logLock = new();
     private static readonly string _version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "1.0";
