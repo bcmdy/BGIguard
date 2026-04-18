@@ -1053,11 +1053,12 @@ class Program
 
         // 备用：找第一个空格（无 .exe 的情况）
         int firstSpace = fullCommandLine.IndexOf(' ');
-        return firstSpace > 0 ? CleanCommandArgs(fullCommandLine[(firstSpace + 1)..]) : "";
+        string rawArgs = firstSpace > 0 ? fullCommandLine[(firstSpace + 1)..] : "";
+        return CleanCommandArgs(rawArgs);
     }
 
     /// <summary>
-    /// 清理命令行参数中的多余引号
+    /// 清理命令行参数中的多余引号和空格
     /// </summary>
     private static string CleanCommandArgs(string args)
     {
@@ -1066,19 +1067,32 @@ class Program
 
         string cleaned = args.Trim();
 
-        // 关键修复：如果清理后只剩下引号和空格，视为空参数
-        // 使用 Replace 去除所有引号后检查是否为空或仅空格
-        if (string.IsNullOrWhiteSpace(cleaned.Replace("\"", "")))
-            return "";
-
-        // 去除首尾配对的单个引号（循环处理多层嵌套）
-        while (cleaned.Length >= 2 && cleaned[0] == '"' && cleaned[^1] == '"')
+        // 递归清理：持续去除首尾引号和空格，直到无法再去除
+        while (true)
         {
-            string inner = cleaned[1..^1].Trim();
-            // 如果去引号后变成空或只剩引号，停止剥离
-            if (string.IsNullOrWhiteSpace(inner.Replace("\"", "")))
-                break;
-            cleaned = inner;
+            // 如果只剩下引号和空格，视为空参数
+            if (string.IsNullOrWhiteSpace(cleaned.Replace("\"", "").Replace(" ", "")))
+                return "";
+
+            // 去除首尾配对的引号对
+            if (cleaned.Length >= 2 && cleaned.StartsWith("\"") && cleaned.EndsWith("\""))
+            {
+                string inner = cleaned[1..^1].Trim();
+                // 检查内部是否只剩下引号和空格
+                if (string.IsNullOrWhiteSpace(inner.Replace("\"", "").Replace(" ", "")))
+                    return "";
+                cleaned = inner;
+                continue;
+            }
+
+            // 去除首尾引号（非成对的情况
+            if (cleaned.Length >= 2 && cleaned[0] == '"' && cleaned[^1] == '"')
+            {
+                cleaned = cleaned[1..^1].Trim();
+                continue;
+            }
+
+            break;
         }
 
         return cleaned;
