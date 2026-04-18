@@ -666,15 +666,20 @@ class Program
         }
 
         // 使用传入的命令行或缓存的命令行
-        string cmdArgs = commandLine ?? _cachedCommand;
+        string cmdArgs = CleanCommandArgs(commandLine ?? _cachedCommand);
 
         try
         {
-            // 使用 cmd /c start 方式启动，这样可以创建一个独立的窗口
+            // 关键修复：使用 "" 作为空窗口标题占位
+            // 否则如果 cmdArgs 以引号开头，会被 start 当作窗口标题解析
+            string arguments = string.IsNullOrEmpty(cmdArgs)
+                ? $"/c start \"\" \"{_betterGiPath}\""
+                : $"/c start \"\" \"{_betterGiPath}\" {cmdArgs}";
+
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
                 FileName = "cmd.exe",
-                Arguments = $"/c start \"BetterGI\" \"{_betterGiPath}\" {cmdArgs}",
+                Arguments = arguments,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
@@ -729,10 +734,15 @@ class Program
                 if (betterGiRunning && commandLine != null)
                 {
                     string extractedArgs = ExtractArgs(commandLine);
-                    if (extractedArgs != _cachedCommand)
+                    string cleanedArgs = CleanCommandArgs(extractedArgs);  // 必须先清理
+
+                    if (cleanedArgs != _cachedCommand)
                     {
-                        _cachedCommand = extractedArgs;
-                        Log("INFO", $"已缓存启动命令: {_cachedCommand}");
+                        _cachedCommand = cleanedArgs;
+                        if (!string.IsNullOrEmpty(_cachedCommand))
+                            Log("INFO", $"已缓存启动命令: {_cachedCommand}");
+                        else
+                            Log("INFO", "检测到无启动参数");
                     }
                 }
 
@@ -1057,43 +1067,37 @@ class Program
         return CleanCommandArgs(rawArgs);
     }
 
+
     /// <summary>
-    /// 清理命令行参数中的多余引号和空格
+    /// 彻底清理命令行参数，去除所有首尾引号和空格（包括不成对的单个引号）
     /// </summary>
     private static string CleanCommandArgs(string args)
     {
         if (string.IsNullOrWhiteSpace(args))
             return "";
 
-        string cleaned = args.Trim();
-
-        // 递归清理：持续去除首尾引号和空格，直到无法再去除
-        while (true)
+        // 循环去除所有首尾引号和空格
+        string cleaned = args;
+        bool changed;
+        do
         {
-            // 如果只剩下引号和空格，视为空参数
-            if (string.IsNullOrWhiteSpace(cleaned.Replace("\"", "").Replace(" ", "")))
-                return "";
+            string before = cleaned;
+            cleaned = cleaned.Trim();
 
-            // 去除首尾配对的引号对
-            if (cleaned.Length >= 2 && cleaned.StartsWith("\"") && cleaned.EndsWith("\""))
-            {
-                string inner = cleaned[1..^1].Trim();
-                // 检查内部是否只剩下引号和空格
-                if (string.IsNullOrWhiteSpace(inner.Replace("\"", "").Replace(" ", "")))
-                    return "";
-                cleaned = inner;
-                continue;
-            }
+            // 去除开头的单个引号（不管结尾有没有）
+            if (cleaned.StartsWith("\""))
+                cleaned = cleaned[1..];
 
-            // 去除首尾引号（非成对的情况
-            if (cleaned.Length >= 2 && cleaned[0] == '"' && cleaned[^1] == '"')
-            {
-                cleaned = cleaned[1..^1].Trim();
-                continue;
-            }
+            // 去除结尾的单个引号（不管开头有没有）
+            if (cleaned.EndsWith("\""))
+                cleaned = cleaned[..^1];
 
-            break;
-        }
+            changed = cleaned != before;
+        } while (changed && cleaned.Length > 0);
+
+        // 如果清理后只剩下引号和空格，视为空参数
+        if (string.IsNullOrWhiteSpace(cleaned.Replace("\"", "")))
+            return "";
 
         return cleaned;
     }

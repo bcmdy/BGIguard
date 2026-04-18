@@ -1,6 +1,6 @@
-# BGIguard Build Script (PowerShell)
+﻿# BGIguard Build Script (PowerShell)
 param(
-    [string]$Version = "2.2.1"
+    [string]$Version = "2.2.2"
 )
 
 $CONFIG = "Release"
@@ -23,7 +23,6 @@ if (Test-Path "bin") {
 # Build project (single file, requires .NET 8 runtime)
 Write-Host ""
 Write-Host "Building project (single file)..." -ForegroundColor Yellow
-# 设置完整版本号 (4位) 用于程序集版本，Version 用于显示版本
 dotnet publish -c $CONFIG -p:PublishSingleFile=true --self-contained false -p:DebugType=none -p:DebugSymbols=false -p:Version=$Version -p:AssemblyVersion=$Version -p:FileVersion=$Version -o ./$OUTPUT_DIR
 
 if ($LASTEXITCODE -ne 0) {
@@ -32,18 +31,34 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# 删除 bin 目录
+# Delete bin directory
 if (Test-Path "bin") {
     Remove-Item -Recurse -Force "bin"
-    Write-Host "已删除 bin 目录" -ForegroundColor Yellow
+    Write-Host "Deleted bin directory" -ForegroundColor Yellow
 }
+
+# Copy README and SPEC to output directory
+Write-Host ""
+Write-Host "Copying documentation files..." -ForegroundColor Yellow
+Copy-Item "README.md" "$OUTPUT_DIR/" -Force
+Copy-Item "SPEC.md" "$OUTPUT_DIR/" -Force
+
+# Create ZIP archive in publish directory
+Write-Host ""
+Write-Host "Creating ZIP archive..." -ForegroundColor Yellow
+$zipName = "BGIguard_v$Version.zip"
+$zipPath = "$OUTPUT_DIR/$zipName"
+
+if (Test-Path $zipPath) {
+    Remove-Item $zipPath -Force
+}
+
+Compress-Archive -Path "$OUTPUT_DIR\*" -DestinationPath $zipPath -Force
+Write-Host "Created: ./$OUTPUT_DIR/$zipName" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "Build completed successfully!" -ForegroundColor Green
 Write-Host "Output: ./$OUTPUT_DIR/" -ForegroundColor Green
+Write-Host "ZIP: ./$OUTPUT_DIR/$zipName" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
-
-Write-Host ""
-Write-Host "Files in output directory:" -ForegroundColor Yellow
-Get-ChildItem $OUTPUT_DIR | ForEach-Object { Write-Host "  $($_.Name)" }
