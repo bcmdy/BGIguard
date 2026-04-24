@@ -635,14 +635,14 @@ class Program
 
         foreach (var process in Process.GetProcessesByName(currentProcessName))
         {
+            string owner = GetProcessOwner(process.Id);
             try
             {
-                string owner = GetProcessOwner(process.Id);
                 if (process.Id != Environment.ProcessId && owner == currentUser)
                 {
                     process.Kill();
                     process.WaitForExit(3000);
-                    Log("INFO", $"已终止旧守护进程 PID:{process.Id}");
+                    Log("INFO", $"已终止旧守护进程 PID:{process.Id} (用户:{owner})");
                 }
                 else if (owner != "" && owner != currentUser)
                 {
@@ -651,7 +651,7 @@ class Program
             }
             catch (Exception ex)
             {
-                Log("ERROR", $"终止守护进程 PID:{process.Id} 失败: {ex.Message}");
+                Log("ERROR", $"终止守护进程 PID:{process.Id} (用户:{owner}) 失败: {ex.Message}");
             }
         }
     }
@@ -725,14 +725,14 @@ class Program
 
         foreach (var process in Process.GetProcessesByName(BetterGiExeName.Replace(".exe", "")))
         {
+            string owner = GetProcessOwner(process.Id);
             try
             {
-                string owner = GetProcessOwner(process.Id);
                 if (owner == currentUser)
                 {
                     process.Kill();
                     process.WaitForExit(3000);
-                    Log("INFO", $"已终止 BetterGI.exe PID:{process.Id}");
+                    Log("INFO", $"已终止 BetterGI.exe PID:{process.Id} (用户:{owner})");
                 }
                 else if (owner != "" && owner != currentUser)
                 {
@@ -741,7 +741,7 @@ class Program
             }
             catch (Exception ex)
             {
-                Log("ERROR", $"终止 BetterGI.exe PID:{process.Id} 失败: {ex.Message}");
+                Log("ERROR", $"终止 BetterGI.exe PID:{process.Id} (用户:{owner}) 失败: {ex.Message}");
             }
         }
     }
@@ -838,7 +838,7 @@ class Program
 
                     if (_gameExitCount >= _missingCountThreshold)
                     {
-                        Log("INFO", "游戏退出达到阈值，终止 BetterGI.exe");
+                        Log("INFO", $"游戏退出达到阈值，终止 BetterGI.exe (用户:{Environment.UserName})");
                         TerminateBetterGiProcessByUser();
                         Thread.Sleep(RestartDelayMs);
                         StartBetterGiProcess(_cachedCommand);

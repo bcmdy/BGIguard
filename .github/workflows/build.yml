@@ -6,7 +6,7 @@ on:
       version:
         description: '版本号'
         required: false
-        default: '3.0.1'
+        default: '3.0.2'
         type: string
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
 
       - name: Build (self-contained, single file)
         run: |
-          dotnet publish -c Release -p:PublishSingleFile=true --self-contained true -p:DebugType=none -p:DebugSymbols=false -p:Version=${{ github.event.inputs.version || '3.0.1' }} -p:AssemblyVersion=${{ github.event.inputs.version || '3.0.1' }} -p:FileVersion=${{ github.event.inputs.version || '3.0.1' }} -o ./publish -r win-x64
+          dotnet publish -c Release -p:PublishSingleFile=true --self-contained true -p:DebugType=none -p:DebugSymbols=false -p:Version=${{ github.event.inputs.version || '3.0.2' }} -p:AssemblyVersion=${{ github.event.inputs.version || '3.0.2' }} -p:FileVersion=${{ github.event.inputs.version || '3.0.2' }} -o ./publish -r win-x64
 
       - name: Remove bin directory
         run: |
