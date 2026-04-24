@@ -10,6 +10,7 @@ BetterGI 进程守护程序
 - 进程退出时自动重启（使用 cmd /c start 独立窗口）
 - 系统内存（物理+虚拟）监控，内存超阈值自动重启
 - 游戏进程联动：检测 YuanShen.exe / GenshinImpact.exe
+- **多用户支持**：进程检查与终止按用户隔离，只操作当前用户的进程
 - 单实例保护：防止多开
 - 配置文件使用 JSON 格式（UTF8 编码）
 - 日志按日轮转，自动清理旧日志
@@ -50,7 +51,7 @@ BGIguard.exe help               # 显示帮助
 - 支持带引号输入
 
 **MemoryPercent**: 内存阈值
-- 系统总内存（物理+页面文件）占用百分比
+- 系统总内存（物理+虚拟内存）占用百分比
 - 超过此值时自动终止并重启 BetterGI
 
 **MonitorInterval**: 监控间隔（秒）
@@ -83,15 +84,31 @@ BGIguard.exe help               # 显示帮助
 
 每次检测输出简洁日志：
 ```
-[2026-04-15 14:30:05.123] [BGIguard_v1.0] [INFO] 检测 14:30:05 | 内存: 45% | BetterGI: 运行 | 游戏: YuanShen
+[2026-04-24 14:30:05.123] [BGIguard_v3.0.2] [INFO] 检测 14:30:05 | 内存: 45% | BetterGI: 运行 | 游戏: YuanShen
 ```
 
 内存警告（ >= 配置值-5% ）：
 ```
-[2026-04-15 14:35:00.123] [BGIguard_v1.0] [WARN] [内存警告] 已用: 41779MB/49152MB (85%) | 物理: 16384MB | 虚拟: 32768MB
+[2026-04-24 14:35:00.123] [BGIguard_v3.0.2] [WARN] [内存警告] 已用: 32768MB/49152MB (67%) | 物理: 16384MB | 虚拟: 32768MB
+```
+
+进程终止日志（含用户信息）：
+```
+[2026-04-24 14:40:00.123] [BGIguard_v3.0.2] [INFO] 已终止 BetterGI.exe PID:1234 (用户:Bcmdy)
+[2026-04-24 14:40:00.456] [BGIguard_v3.0.2] [WARN] BetterGI.exe PID:5678 属于用户 Admin，跳过终止
 ```
 
 日志文件：`BGI_guardYYYYMMDD.log`（UTF8 编码，按日生成）
+
+## 多用户说明
+
+BGIguard 支持多用户环境，所有进程相关操作都会按用户隔离：
+
+- **进程检查**：只检测当前用户启动的 BetterGI 和游戏进程
+- **进程终止**：只终止当前用户启动的进程，避免影响其他用户
+- **日志记录**：终止日志会显示被终止进程的所属用户
+
+这确保了在共享电脑或多用户环境下，每个用户的守护进程独立运行，互不干扰。
 
 ## 技术要求
 
@@ -105,11 +122,20 @@ BGIguard/
 ├── BGIguard.csproj
 ├── Program.cs
 ├── SPEC.md              # 需求规格文档
-└── README.md            # 说明文档
+├── CHANGELOG.md         # 更新日志
+├── README.md            # 说明文档
+├── build.ps1            # 构建脚本
+└── Assets/icon.ico      # 程序图标
 ```
 
 ## 构建发布
 
+### PowerShell 脚本
+```powershell
+.\build.ps1 -Version 3.0.2
+```
+
+### 手动构建
 ```bash
 dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ./publish
 ```
