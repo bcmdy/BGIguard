@@ -184,7 +184,7 @@ class Program
         HandleSingleInstance();
 
         // 检查 BetterGI 是否已运行，若已运行则不重复启动
-        bool alreadyRunning = IsBetterGiRunningByPath();
+        bool alreadyRunning = IsBetterGiRunningByUser();
         if (!alreadyRunning)
         {
             // 未运行，启动 BetterGI.exe
@@ -862,9 +862,17 @@ class Program
     }
 
     /// <summary>
-    /// 按路径检查 BetterGI 是否运行
+    /// 检查进程是否属于当前用户
     /// </summary>
-    private static bool IsBetterGiRunningByPath()
+    private static bool IsProcessOwnedByCurrentUser(int processId)
+    {
+        return GetProcessOwner(processId) == Environment.UserName;
+    }
+
+    /// <summary>
+    /// 按用户和路径检查 BetterGI 是否运行
+    /// </summary>
+    private static bool IsBetterGiRunningByUser()
     {
         if (string.IsNullOrEmpty(_betterGiExePath)) return false;
 
@@ -872,6 +880,8 @@ class Program
         {
             try
             {
+                if (!IsProcessOwnedByCurrentUser(process.Id))
+                    continue;
                 string? modulePath = process.MainModule?.FileName;
                 if (string.Equals(modulePath, _betterGiExePath, StringComparison.OrdinalIgnoreCase))
                     return true;
@@ -881,8 +891,16 @@ class Program
         return false;
     }
 
+    // 重启 BetterGI.exe
+    private static void RestartBetterGiProcess()
+    {
+        TerminateBetterGiProcessByUser();
+        Thread.Sleep(RestartDelayMs);
+        StartBetterGiProcess(_cachedCommand);
+    }
+
     /// <summary>
-    /// 获取 BetterGI 进程的信息（合并遍历）
+    /// 获取当前用户 BetterGI 进程的信息
     /// </summary>
     private static (bool exists, string? commandLine) GetBetterGiInfo()
     {
@@ -892,6 +910,8 @@ class Program
         {
             try
             {
+                if (!IsProcessOwnedByCurrentUser(process.Id))
+                    continue;
                 string? modulePath = process.MainModule?.FileName;
                 if (string.Equals(modulePath, _betterGiExePath, StringComparison.OrdinalIgnoreCase))
                 {
@@ -904,38 +924,34 @@ class Program
     }
 
     /// <summary>
-    /// 重启 BetterGI.exe
-    /// </summary>
-    private static void RestartBetterGiProcess()
-    {
-        TerminateBetterGiProcessByUser();
-        Thread.Sleep(RestartDelayMs);
-        StartBetterGiProcess(_cachedCommand);
-    }
-
-    /// <summary>
-    /// 检查是否有游戏进程运行
+    /// 检查当前用户是否有游戏进程运行
     /// </summary>
     private static bool IsAnyGameRunning()
     {
         foreach (var name in GameProcessNames)
         {
-            if (Process.GetProcessesByName(name).Length > 0)
-                return true;
+            foreach (var process in Process.GetProcessesByName(name))
+            {
+                if (IsProcessOwnedByCurrentUser(process.Id))
+                    return true;
+            }
         }
         return false;
     }
 
     /// <summary>
-    /// 获取正在运行的游戏进程
+    /// 获取当前用户正在运行的游戏进程
     /// </summary>
     private static List<string> GetRunningGameProcesses()
     {
         var games = new List<string>();
         foreach (var name in GameProcessNames)
         {
-            if (Process.GetProcessesByName(name).Length > 0)
-                games.Add(name);
+            foreach (var process in Process.GetProcessesByName(name))
+            {
+                if (IsProcessOwnedByCurrentUser(process.Id))
+                    games.Add(name);
+            }
         }
         return games;
     }

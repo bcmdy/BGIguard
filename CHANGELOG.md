@@ -6,6 +6,29 @@
 
 ---
 
+## [3.0.0] - 2026-04-24
+
+### 新增功能
+- 进程终止改为按用户终止（通过 WMI GetOwner 获取进程所有者）
+- 添加 IsProcessOwnedByCurrentUser 通用用户检查方法
+- 所有进程检查添加用户过滤（BetterGI 和游戏进程）
+- 编译脚本自动同步版本号到 csproj 和 build.ps1
+
+### 重构
+- 提取 PromptForBetterGiPath 统一方法消除重复代码
+- 统一变量命名 _betterGiPath → _betterGiExePath
+
+### 错误修复
+- 修正 GetOwner 方法返回的用户名索引
+
+### 日志
+- 添加终止进程的详细日志（PID、用户、失败原因）
+
+### 文档
+- 同步更新 CHANGELOG.md
+
+---
+
 ## [2.2.2] - 2026-04-24
 
 ### 错误修复
