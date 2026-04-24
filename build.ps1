@@ -1,6 +1,6 @@
 ﻿# BGIguard Build Script (PowerShell)
 param(
-    [string]$Version = "2.2.2"
+    [string]$Version = "2.2.3"
 )
 
 $CONFIG = "Release"
@@ -55,6 +55,28 @@ if (Test-Path $zipPath) {
 
 Compress-Archive -Path "$OUTPUT_DIR\*" -DestinationPath $zipPath -Force
 Write-Host "Created: ./$OUTPUT_DIR/$zipName" -ForegroundColor Green
+
+# Update version in project files
+Write-Host ""
+Write-Host "Updating version in project files..." -ForegroundColor Yellow
+
+# Update BGIguard.csproj
+$csprojPath = "BGIguard.csproj"
+if (Test-Path $csprojPath) {
+    $csprojContent = Get-Content $csprojPath -Raw
+    $csprojContent = $csprojContent -replace '<Version>\d+\.\d+\.\d+</Version>', "<Version>$Version</Version>"
+    $csprojContent = $csprojContent -replace '<AssemblyVersion>\d+\.\d+\.\d+\.0</AssemblyVersion>', "<AssemblyVersion>$Version.0</AssemblyVersion>"
+    $csprojContent = $csprojContent -replace '<FileVersion>\d+\.\d+\.\d+\.0</FileVersion>', "<FileVersion>$Version.0</FileVersion>"
+    Set-Content -Path $csprojPath -Value $csprojContent -NoNewline -Encoding UTF8
+    Write-Host "Updated: $csprojPath" -ForegroundColor Green
+}
+
+# Update this script
+$scriptPath = $MyInvocation.MyCommand.Path
+$scriptContent = Get-Content $scriptPath -Raw
+$scriptContent = $scriptContent -replace '(?<=Version\s*=\s*")[\d.]+(?=")', $Version
+Set-Content -Path $scriptPath -Value $scriptContent -NoNewline -Encoding UTF8
+Write-Host "Updated: $scriptPath" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green

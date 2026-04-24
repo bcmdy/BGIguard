@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Management;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -111,7 +112,7 @@ class Program
 
     // ============== 全局变量 ==============
     private static string _exeDirectory = null!;
-    private static string _betterGiPath = "";
+    private static string _betterGiExePath = "";
     private static string _cachedCommand = "";
     private static Mutex? _mutex;
     private static readonly object _logLock = new();
@@ -159,24 +160,7 @@ class Program
         // 检测 BetterGI.exe 路径
         if (!DetectBetterGiPath())
         {
-            // 未找到 BetterGI.exe，强制要求设置
-            Console.WriteLine("错误: 未找到 BetterGI.exe");
-            Console.WriteLine("请设置 BetterGI.exe 路径:");
-            Console.Write("> ");
-            string? pathInput = Console.ReadLine();
-            if (!string.IsNullOrEmpty(pathInput))
-            {
-                pathInput = pathInput.Trim().Trim('"');
-            }
-            while (string.IsNullOrWhiteSpace(pathInput) || !File.Exists(pathInput))
-            {
-                Console.WriteLine("文件不存在，请重新输入 BetterGI.exe 路径:");
-                Console.Write("> ");
-                pathInput = Console.ReadLine();
-            }
-            SaveConfigPath(pathInput);
-            _betterGiPath = pathInput;
-            Console.WriteLine($"路径已设置为: {_betterGiPath}");
+            PromptForBetterGiPath();
         }
 
         // 处理命令行参数
@@ -194,7 +178,7 @@ class Program
 
         // 记录启动日志
         Log("INFO", "BGIguard 启动成功");
-        Log("INFO", $"BetterGI路径: {_betterGiPath}");
+        Log("INFO", $"BetterGI路径: {_betterGiExePath}");
 
         // 处理单实例保护
         HandleSingleInstance();
@@ -233,7 +217,7 @@ class Program
         string localPath = Path.Combine(_exeDirectory, BetterGiExeName);
         if (File.Exists(localPath))
         {
-            _betterGiPath = localPath;
+            _betterGiExePath = localPath;
             return true;
         }
 
@@ -241,11 +225,35 @@ class Program
         var config = LoadConfig();
         if (!string.IsNullOrEmpty(config.betterGiPath) && File.Exists(config.betterGiPath))
         {
-            _betterGiPath = config.betterGiPath;
+            _betterGiExePath = config.betterGiPath;
             return true;
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// 强制要求用户输入 BetterGI.exe 路径
+    /// </summary>
+    private static void PromptForBetterGiPath()
+    {
+        Console.WriteLine("错误: 未找到 BetterGI.exe");
+        Console.WriteLine("请设置 BetterGI.exe 路径:");
+        Console.Write("> ");
+        string? pathInput = Console.ReadLine();
+        if (!string.IsNullOrEmpty(pathInput))
+        {
+            pathInput = pathInput.Trim().Trim('"');
+        }
+        while (string.IsNullOrWhiteSpace(pathInput) || !File.Exists(pathInput))
+        {
+            Console.WriteLine("文件不存在，请重新输入 BetterGI.exe 路径:");
+            Console.Write("> ");
+            pathInput = Console.ReadLine();
+        }
+        SaveConfigPath(pathInput);
+        _betterGiExePath = pathInput;
+        Console.WriteLine($"路径已设置为: {_betterGiExePath}");
     }
 
     /// <summary>
@@ -363,22 +371,7 @@ class Program
                 // 检测 BetterGI 路径，未找到则强制要求设置
                 if (!DetectBetterGiPath())
                 {
-                    Console.WriteLine("错误: 未找到 BetterGI.exe");
-                    Console.WriteLine("请设置 BetterGI.exe 路径:");
-                    Console.Write("> ");
-                    string? pathInput = Console.ReadLine();
-                    if (!string.IsNullOrEmpty(pathInput))
-                    {
-                        pathInput = pathInput.Trim().Trim('"');
-                    }
-                    while (string.IsNullOrWhiteSpace(pathInput) || !File.Exists(pathInput))
-                    {
-                        Console.WriteLine("文件不存在，请重新输入:");
-                        Console.Write("> ");
-                        pathInput = Console.ReadLine();
-                    }
-                    SaveConfigPath(pathInput);
-                    _betterGiPath = pathInput;
+                    PromptForBetterGiPath();
                 }
 
                 Log("INFO", "BGIguard 启动成功");
@@ -633,25 +626,55 @@ class Program
     }
 
     /// <summary>
-    /// 终止已存在的守护进程
+    /// 终止已存在的守护进程（按用户和进程名）
     /// </summary>
     private static void TerminateExistingGuard()
     {
         string currentProcessName = Process.GetCurrentProcess().ProcessName;
-        string currentExePath = Environment.ProcessPath ?? "";
+        string currentUser = Environment.UserName;
 
         foreach (var process in Process.GetProcessesByName(currentProcessName))
         {
             try
             {
-                if (process.Id != Environment.ProcessId)
+                string owner = GetProcessOwner(process.Id);
+                if (process.Id != Environment.ProcessId && owner == currentUser)
                 {
                     process.Kill();
                     process.WaitForExit(3000);
+                    Log("INFO", $"已终止旧守护进程 PID:{process.Id}");
+                }
+                else if (owner != "" && owner != currentUser)
+                {
+                    Log("WARN", $"守护进程 PID:{process.Id} 属于用户 {owner}，跳过终止");
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Log("ERROR", $"终止守护进程 PID:{process.Id} 失败: {ex.Message}");
+            }
         }
+    }
+
+    /// <summary>
+    /// 获取进程所有者用户名
+    /// </summary>
+    private static string GetProcessOwner(int processId)
+    {
+        try
+        {
+            using var searcher = new ManagementObjectSearcher(
+                $"SELECT * FROM Win32_Process WHERE ProcessId = {processId}");
+            foreach (ManagementObject mo in searcher.Get())
+            {
+                var args = new object?[] { null, null };
+                mo.InvokeMethod("GetOwner", args);
+                if (args[0] != null)
+                    return args[0]?.ToString() ?? ""; // args[0] = 用户名, args[1] = 域名
+            }
+        }
+        catch { }
+        return "";
     }
 
     /// <summary>
@@ -659,9 +682,9 @@ class Program
     /// </summary>
     private static void StartBetterGiProcess(string? commandLine = null)
     {
-        if (string.IsNullOrEmpty(_betterGiPath) || !File.Exists(_betterGiPath))
+        if (string.IsNullOrEmpty(_betterGiExePath) || !File.Exists(_betterGiExePath))
         {
-            Log("ERROR", $"找不到 BetterGI.exe: {_betterGiPath}");
+            Log("ERROR", $"找不到 BetterGI.exe: {_betterGiExePath}");
             return;
         }
 
@@ -673,8 +696,8 @@ class Program
             // 关键修复：使用 "" 作为空窗口标题占位
             // 否则如果 cmdArgs 以引号开头，会被 start 当作窗口标题解析
             string arguments = string.IsNullOrEmpty(cmdArgs)
-                ? $"/c start \"\" \"{_betterGiPath}\""
-                : $"/c start \"\" \"{_betterGiPath}\" {cmdArgs}";
+                ? $"/c start \"\" \"{_betterGiExePath}\""
+                : $"/c start \"\" \"{_betterGiExePath}\" {cmdArgs}";
 
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
@@ -694,25 +717,32 @@ class Program
     }
 
     /// <summary>
-    /// 按路径终止 BetterGI.exe 进程
+    /// 按用户终止 BetterGI.exe 进程（终止当前用户启动的进程）
     /// </summary>
-    private static void TerminateBetterGiProcessByPath()
+    private static void TerminateBetterGiProcessByUser()
     {
-        if (string.IsNullOrEmpty(_betterGiPath)) return;
+        string currentUser = Environment.UserName;
 
         foreach (var process in Process.GetProcessesByName(BetterGiExeName.Replace(".exe", "")))
         {
             try
             {
-                string? modulePath = process.MainModule?.FileName;
-                if (string.Equals(modulePath, _betterGiPath, StringComparison.OrdinalIgnoreCase))
+                string owner = GetProcessOwner(process.Id);
+                if (owner == currentUser)
                 {
                     process.Kill();
                     process.WaitForExit(3000);
-                    Log("INFO", "已终止现有 BetterGI.exe 进程");
+                    Log("INFO", $"已终止 BetterGI.exe PID:{process.Id}");
+                }
+                else if (owner != "" && owner != currentUser)
+                {
+                    Log("WARN", $"BetterGI.exe PID:{process.Id} 属于用户 {owner}，跳过终止");
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Log("ERROR", $"终止 BetterGI.exe PID:{process.Id} 失败: {ex.Message}");
+            }
         }
     }
 
@@ -794,7 +824,7 @@ class Program
                 if (usedMB > memoryLimitMB)
                 {
                     Log("WARN", $"内存超限: {usedMB}MB > {memoryLimitMB}MB ({_memoryPercent}%)");
-                    TerminateBetterGiProcessByPath();
+                    TerminateBetterGiProcessByUser();
                     Thread.Sleep(RestartDelayMs);
                     StartBetterGiProcess(_cachedCommand);
                     Log("INFO", "内存超限后已重启");
@@ -809,7 +839,7 @@ class Program
                     if (_gameExitCount >= _missingCountThreshold)
                     {
                         Log("INFO", "游戏退出达到阈值，终止 BetterGI.exe");
-                        TerminateBetterGiProcessByPath();
+                        TerminateBetterGiProcessByUser();
                         Thread.Sleep(RestartDelayMs);
                         StartBetterGiProcess(_cachedCommand);
                         _gameExitCount = 0;
@@ -836,14 +866,14 @@ class Program
     /// </summary>
     private static bool IsBetterGiRunningByPath()
     {
-        if (string.IsNullOrEmpty(_betterGiPath)) return false;
+        if (string.IsNullOrEmpty(_betterGiExePath)) return false;
 
         foreach (var process in Process.GetProcessesByName(BetterGiExeName.Replace(".exe", "")))
         {
             try
             {
                 string? modulePath = process.MainModule?.FileName;
-                if (string.Equals(modulePath, _betterGiPath, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(modulePath, _betterGiExePath, StringComparison.OrdinalIgnoreCase))
                     return true;
             }
             catch { }
@@ -856,14 +886,14 @@ class Program
     /// </summary>
     private static (bool exists, string? commandLine) GetBetterGiInfo()
     {
-        if (string.IsNullOrEmpty(_betterGiPath)) return (false, null);
+        if (string.IsNullOrEmpty(_betterGiExePath)) return (false, null);
 
         foreach (var process in Process.GetProcessesByName(BetterGiExeName.Replace(".exe", "")))
         {
             try
             {
                 string? modulePath = process.MainModule?.FileName;
-                if (string.Equals(modulePath, _betterGiPath, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(modulePath, _betterGiExePath, StringComparison.OrdinalIgnoreCase))
                 {
                     return (true, GetProcessCommandLine(process.Id));
                 }
@@ -878,7 +908,7 @@ class Program
     /// </summary>
     private static void RestartBetterGiProcess()
     {
-        TerminateBetterGiProcessByPath();
+        TerminateBetterGiProcessByUser();
         Thread.Sleep(RestartDelayMs);
         StartBetterGiProcess(_cachedCommand);
     }

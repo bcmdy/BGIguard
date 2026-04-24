@@ -6,7 +6,7 @@ on:
       version:
         description: '版本号'
         required: false
-        default: '1.0.0'
+        default: '2.2.2'
         type: string
 
 jobs:
@@ -24,15 +24,26 @@ jobs:
 
       - name: Build (self-contained, single file)
         run: |
-          dotnet publish -c Release -p:PublishSingleFile=true --self-contained true -p:DebugType=none -p:DebugSymbols=false -p:Version=${{ github.event.inputs.version || '1.0.0' }} -p:AssemblyVersion=${{ github.event.inputs.version || '1.0.0' }} -p:FileVersion=${{ github.event.inputs.version || '1.0.0' }} -o ./publish -r win-x64
+          dotnet publish -c Release -p:PublishSingleFile=true --self-contained true -p:DebugType=none -p:DebugSymbols=false -p:Version=${{ github.event.inputs.version || '2.2.2' }} -p:AssemblyVersion=${{ github.event.inputs.version || '2.2.2' }} -p:FileVersion=${{ github.event.inputs.version || '2.2.2' }} -o ./publish -r win-x64
 
       - name: Remove bin directory
         run: |
           if (Test-Path "bin") { Remove-Item -Recurse -Force "bin" }
 
+      - name: Update version in project files
+        run: |
+          $version = "${{ github.event.inputs.version || '2.2.2' }}"
+          $versionMain = $version + ".0"
+
+          # Update BGIguard.csproj
+          (Get-Content "BGIguard.csproj" -Raw) -replace '<Version>\d+\.\d+\.\d+</Version>', "<Version>$version</Version>" -replace '<AssemblyVersion>\d+\.\d+\.\d+\.0</AssemblyVersion>', "<AssemblyVersion>$versionMain</AssemblyVersion>" -replace '<FileVersion>\d+\.\d+\.\d+\.0</FileVersion>', "<FileVersion>$versionMain</FileVersion>" | Set-Content "BGIguard.csproj" -NoNewline -Encoding UTF8
+
+          # Update build.ps1
+          (Get-Content "build.ps1" -Raw) -replace '(?<=Version\s*=\s*")[\d.]+(?=")', $version | Set-Content "build.ps1" -NoNewline -Encoding UTF8
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BGIguard
+          name: BGIguard-${{ github.event.inputs.version || '2.2.2' }}
           path: publish/
           retention-days: 30
