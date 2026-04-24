@@ -966,27 +966,27 @@ class Program
             dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>()
         };
 
-        if (GlobalMemoryStatusEx(ref memStatus))
+        if (!GlobalMemoryStatusEx(ref memStatus))
         {
-            // 物理内存
-            ulong totalPhysKB = memStatus.ullTotalPhys / 1024;
-            ulong usedPhysKB = (memStatus.ullTotalPhys - memStatus.ullAvailPhys) / 1024;
-
-            // 页面文件（虚拟内存）
-            ulong totalPageKB = memStatus.ullTotalPageFile / 1024;
-            ulong usedPageKB = (memStatus.ullTotalPageFile - memStatus.ullAvailPageFile) / 1024;
-
-            // 总内存 = 物理 + 页面文件（或者直接用 totalPageFile，因为它就是物理+页面文件）
-            // 注意：ullTotalPageFile 已经包含了物理内存，所以不需要再加 ullTotalPhys
-            ulong totalKB = totalPageKB;  // 这是系统总提交限制
-            ulong usedKB = usedPageKB;    // 这是系统总已用（物理已用 + 页面文件已用）
-
-            return ((long)totalKB, (long)usedKB,
-                    (long)totalPhysKB, (long)totalPageKB);
+            Log("ERROR", "获取系统内存信息失败，使用默认值");
+            return (32 * 1024, 0, 32 * 1024, 16 * 1024);
         }
 
-        Log("ERROR", "获取系统内存信息失败，使用默认值");
-        return (32 * 1024, 0, 32 * 1024, 16 * 1024);  // 修正默认值单位
+        // 物理内存 (MB)
+        long totalPhysMB = (long)(memStatus.ullTotalPhys / 1024 / 1024);
+        long usedPhysMB = (long)((memStatus.ullTotalPhys - memStatus.ullAvailPhys) / 1024 / 1024);
+
+        // 页面文件实际占用 (MB) = 已提交 - 物理已用
+        // 因为已提交总量 = 物理已用 + 页面文件实际已用
+        long totalCommitMB = (long)(memStatus.ullTotalPageFile / 1024 / 1024);
+        long usedCommitMB = (long)((memStatus.ullTotalPageFile - memStatus.ullAvailPageFile) / 1024 / 1024);
+        long usedPageFileMB = Math.Max(0, usedCommitMB - usedPhysMB);
+
+        // 物理 + 虚拟 实际占用
+        long totalCombinedMB = totalPhysMB + (totalCommitMB - totalPhysMB); // 或直接用页面文件总大小
+        long usedCombinedMB = usedPhysMB + usedPageFileMB;
+
+        return (totalCombinedMB, usedCombinedMB, usedPhysMB, usedPageFileMB);
     }
 
     /// <summary>
