@@ -80,6 +80,7 @@ class Program
     }
 
     private const int PROCESS_QUERY_INFORMATION = 0x0400;
+    private const int PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
     private const int PROCESS_VM_READ = 0x0010;
     private const int ProcessBasicInformation = 0;
 
@@ -734,10 +735,14 @@ class Program
 
         try
         {
-            // 打开目标进程（只需查询信息权限，无需 VM_READ）
+            // 打开目标进程（权限不足时回退到有限查询权限）
             hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, false, processId);
             if (hProcess == IntPtr.Zero)
-                return "";
+            {
+                hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+                if (hProcess == IntPtr.Zero)
+                    return "";
+            }
 
             // 打开进程的访问令牌
             if (!OpenProcessToken(hProcess, TOKEN_QUERY, out hToken))
