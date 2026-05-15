@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Management;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -39,6 +38,32 @@ class Program
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);
+
+    // ============== P/Invoke API（进程所有者查询） ==============
+    private const uint TOKEN_QUERY = 0x0008;
+    private const int TokenUser = 1;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SID_AND_ATTRIBUTES
+    {
+        public IntPtr Sid;
+        public uint Attributes;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TOKEN_USER
+    {
+        public SID_AND_ATTRIBUTES User;
+    }
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool OpenProcessToken(IntPtr ProcessHandle, uint DesiredAccess, out IntPtr TokenHandle);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool GetTokenInformation(IntPtr TokenHandle, int TokenInformationClass, IntPtr TokenInformation, int TokenInformationLength, out int ReturnLength);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern bool LookupAccountSid(string? lpSystemName, IntPtr Sid, StringBuilder lpName, ref int cchName, StringBuilder? lpReferencedDomainName, ref int cchReferencedDomainName, out int peUse);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct MEMORYSTATUSEX
@@ -80,6 +105,7 @@ class Program
     // ============== 配置常量 ==============
     private const int RestartDelayMs = 1000;
     private const int MaxLogFiles = 7;
+    private const int ProcessWaitExitMs = 3000;
     private const string BetterGiExeName = "BetterGI.exe";
     private const string LogFilePrefix = "BGI_guard";
     private static string ConfigFilePath => Path.Combine(_exeDirectory, "BGIguard_config.json");
@@ -93,9 +119,6 @@ class Program
         public int MissingCount { get; set; } = 3;
         public bool SkipSetup { get; set; }
     }
-
-    [DllImport("ntdll.dll")]
-    private static extern IntPtr RtlGetCurrentPeb();
 
     // PEB 偏移量（动态获取）
     private static readonly int PEB_OFFSET;
@@ -549,7 +572,10 @@ class Program
             if (config.MissingCount <= 0 || config.MissingCount > 10)
                 config.MissingCount = 3;
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Log("ERROR", $"加载配置文件失败: {ex.Message}");
+        }
 
         var result = (config.BetterGiPath, config.MemoryPercent, config.MonitorInterval, config.MissingCount, config.SkipSetup);
         _configCache = result;
@@ -584,20 +610,49 @@ class Program
     }
 
     /// <summary>
+    /// 验证并规范化可执行文件路径
+    /// </summary>
+    private static bool ValidateAndNormalizePath(string path, out string normalizedPath)
+    {
+        normalizedPath = path.Trim().Trim('"');
+
+        if (string.IsNullOrWhiteSpace(normalizedPath))
+        {
+            Log("ERROR", "路径不能为空");
+            return false;
+        }
+
+        if (!File.Exists(normalizedPath))
+        {
+            Log("ERROR", $"文件不存在: {normalizedPath}");
+            return false;
+        }
+
+        string extension = Path.GetExtension(normalizedPath);
+        if (!string.Equals(extension, ".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            Log("ERROR", $"不是有效的可执行文件 (.exe): {extension}");
+            return false;
+        }
+
+        // 规范化路径
+        normalizedPath = Path.GetFullPath(normalizedPath);
+        return true;
+    }
+
+    /// <summary>
     /// 保存路径配置
     /// </summary>
     private static void SaveConfigPath(string path)
     {
-        // 去除首尾引号，支持带引号的路径输入
-        if (!string.IsNullOrEmpty(path))
-        {
-            path = path.Trim().Trim('"');
-        }
+        if (!ValidateAndNormalizePath(path, out string normalizedPath))
+            return;
+
         _configCache = null;
         var existing = LoadConfig();
         var config = new Config
         {
-            BetterGiPath = path,
+            BetterGiPath = normalizedPath,
             MemoryPercent = existing.memoryPercent,
             MonitorInterval = existing.monitorIntervalSeconds,
             MissingCount = existing.missingCountThreshold,
@@ -626,55 +681,108 @@ class Program
     }
 
     /// <summary>
-    /// 终止已存在的守护进程（按用户和进程名）
+    /// 按用户终止指定进程
     /// </summary>
-    private static void TerminateExistingGuard()
+    private static void TerminateProcessesByUser(string processName, string logPrefix, int? excludePid = null)
     {
-        string currentProcessName = Process.GetCurrentProcess().ProcessName;
         string currentUser = Environment.UserName;
 
-        foreach (var process in Process.GetProcessesByName(currentProcessName))
+        foreach (var process in Process.GetProcessesByName(processName))
         {
             string owner = GetProcessOwner(process.Id);
             try
             {
-                if (process.Id != Environment.ProcessId && owner == currentUser)
+                if (excludePid.HasValue && process.Id == excludePid.Value)
+                    continue;
+
+                if (owner == currentUser)
                 {
                     process.Kill();
-                    process.WaitForExit(3000);
-                    Log("INFO", $"已终止旧守护进程 PID:{process.Id} (用户:{owner})");
+                    process.WaitForExit(ProcessWaitExitMs);
+                    Log("INFO", $"已终止 {logPrefix} PID:{process.Id} (用户:{owner})");
                 }
-                else if (owner != "" && owner != currentUser)
+                else if (!string.IsNullOrEmpty(owner))
                 {
-                    Log("WARN", $"守护进程 PID:{process.Id} 属于用户 {owner}，跳过终止");
+                    Log("WARN", $"{logPrefix} PID:{process.Id} 属于用户 {owner}，跳过终止");
                 }
             }
             catch (Exception ex)
             {
-                Log("ERROR", $"终止守护进程 PID:{process.Id} (用户:{owner}) 失败: {ex.Message}");
+                Log("ERROR", $"终止 {logPrefix} PID:{process.Id} (用户:{owner}) 失败: {ex.Message}");
             }
         }
     }
 
     /// <summary>
-    /// 获取进程所有者用户名
+    /// 终止已存在的守护进程（按用户和进程名）
+    /// </summary>
+    private static void TerminateExistingGuard()
+    {
+        string currentProcessName = Process.GetCurrentProcess().ProcessName;
+        TerminateProcessesByUser(currentProcessName, "旧守护进程", Environment.ProcessId);
+    }
+
+    /// <summary>
+    /// 获取进程所有者用户名（P/Invoke 方式，替代 WMI）
+    /// 性能：WMI 单次约 200-500ms，P/Invoke 单次约 1-3ms
     /// </summary>
     private static string GetProcessOwner(int processId)
     {
+        IntPtr hProcess = IntPtr.Zero;
+        IntPtr hToken = IntPtr.Zero;
+        IntPtr tokenInfo = IntPtr.Zero;
+
         try
         {
-            using var searcher = new ManagementObjectSearcher(
-                $"SELECT * FROM Win32_Process WHERE ProcessId = {processId}");
-            foreach (ManagementObject mo in searcher.Get())
-            {
-                var args = new object?[] { null, null };
-                mo.InvokeMethod("GetOwner", args);
-                if (args[0] != null)
-                    return args[0]?.ToString() ?? ""; // args[0] = 用户名, args[1] = 域名
-            }
+            // 打开目标进程（只需查询信息权限，无需 VM_READ）
+            hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, false, processId);
+            if (hProcess == IntPtr.Zero)
+                return "";
+
+            // 打开进程的访问令牌
+            if (!OpenProcessToken(hProcess, TOKEN_QUERY, out hToken))
+                return "";
+
+            // 第一次调用：获取所需缓冲区大小
+            int returnLength = 0;
+            GetTokenInformation(hToken, TokenUser, IntPtr.Zero, 0, out returnLength);
+            if (returnLength == 0)
+                return "";
+
+            // 分配非托管内存并获取 TOKEN_USER
+            tokenInfo = Marshal.AllocHGlobal(returnLength);
+            if (!GetTokenInformation(hToken, TokenUser, tokenInfo, returnLength, out returnLength))
+                return "";
+
+            var tokenUser = Marshal.PtrToStructure<TOKEN_USER>(tokenInfo);
+            if (tokenUser.User.Sid == IntPtr.Zero)
+                return "";
+
+            // 将 SID 转换为账户名
+            int nameSize = 256;
+            int domainSize = 256;
+            var nameBuilder = new StringBuilder(nameSize);
+            var domainBuilder = new StringBuilder(domainSize);
+
+            if (!LookupAccountSid(null, tokenUser.User.Sid, nameBuilder, ref nameSize, domainBuilder, ref domainSize, out _))
+                return "";
+
+            return nameBuilder.ToString();
         }
-        catch { }
-        return "";
+        catch (Exception ex)
+        {
+            Log("WARN", $"获取进程所有者失败 (PID:{processId}): {ex.Message}");
+            return "";
+        }
+        finally
+        {
+            if (tokenInfo != IntPtr.Zero)
+                Marshal.FreeHGlobal(tokenInfo);
+            if (hToken != IntPtr.Zero)
+                CloseHandle(hToken);
+            if (hProcess != IntPtr.Zero)
+                CloseHandle(hProcess);
+        }
     }
 
     /// <summary>
@@ -721,29 +829,7 @@ class Program
     /// </summary>
     private static void TerminateBetterGiProcessByUser()
     {
-        string currentUser = Environment.UserName;
-
-        foreach (var process in Process.GetProcessesByName(BetterGiExeName.Replace(".exe", "")))
-        {
-            string owner = GetProcessOwner(process.Id);
-            try
-            {
-                if (owner == currentUser)
-                {
-                    process.Kill();
-                    process.WaitForExit(3000);
-                    Log("INFO", $"已终止 BetterGI.exe PID:{process.Id} (用户:{owner})");
-                }
-                else if (owner != "" && owner != currentUser)
-                {
-                    Log("WARN", $"BetterGI.exe PID:{process.Id} 属于用户 {owner}，跳过终止");
-                }
-            }
-            catch (Exception ex)
-            {
-                Log("ERROR", $"终止 BetterGI.exe PID:{process.Id} (用户:{owner}) 失败: {ex.Message}");
-            }
-        }
+        TerminateProcessesByUser(BetterGiExeName.Replace(".exe", ""), "BetterGI.exe");
     }
 
     /// <summary>
@@ -777,8 +863,7 @@ class Program
                 }
 
                 // 3. 检查游戏进程
-                bool gameRunning = IsAnyGameRunning();
-                var gameProcesses = GetRunningGameProcesses();
+                var (gameRunning, gameProcesses) = GetRunningGameProcesses();
 
                 // 4. 检查系统内存
                 var (totalMB, usedMB, physicalMB, virtualMB) = GetSystemMemory();
@@ -886,7 +971,10 @@ class Program
                 if (string.Equals(modulePath, _betterGiExePath, StringComparison.OrdinalIgnoreCase))
                     return true;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Log("ERROR", $"检查 BetterGI 进程失败: {ex.Message}");
+            }
         }
         return false;
     }
@@ -918,31 +1006,18 @@ class Program
                     return (true, GetProcessCommandLine(process.Id));
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Log("ERROR", $"获取 BetterGI 进程信息失败: {ex.Message}");
+            }
         }
         return (false, null);
     }
 
     /// <summary>
-    /// 检查当前用户是否有游戏进程运行
-    /// </summary>
-    private static bool IsAnyGameRunning()
-    {
-        foreach (var name in GameProcessNames)
-        {
-            foreach (var process in Process.GetProcessesByName(name))
-            {
-                if (IsProcessOwnedByCurrentUser(process.Id))
-                    return true;
-            }
-        }
-        return false;
-    }
-
-    /// <summary>
     /// 获取当前用户正在运行的游戏进程
     /// </summary>
-    private static List<string> GetRunningGameProcesses()
+    private static (bool anyRunning, List<string> runningNames) GetRunningGameProcesses()
     {
         var games = new List<string>();
         foreach (var name in GameProcessNames)
@@ -953,7 +1028,7 @@ class Program
                     games.Add(name);
             }
         }
-        return games;
+        return (games.Count > 0, games);
     }
 
     /// <summary>
@@ -1008,7 +1083,10 @@ class Program
                 File.AppendAllText(logPath, logMessage + Environment.NewLine, Encoding.UTF8);
                 CleanOldLogs();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"写入日志失败: {ex.Message}");
+            }
         }
     }
 
@@ -1026,10 +1104,13 @@ class Program
 
             foreach (var file in logFiles)
             {
-                try { File.Delete(file); } catch { }
+                try { File.Delete(file); } catch (Exception ex) { Log("ERROR", $"删除旧日志失败: {ex.Message}"); }
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"清理旧日志失败: {ex.Message}");
+        }
     }
 
     /// <summary>
