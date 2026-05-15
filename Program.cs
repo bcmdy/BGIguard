@@ -115,9 +115,9 @@ class Program
     private class Config
     {
         public string BetterGiPath { get; set; } = "";
-        public int MemoryPercent { get; set; } = 95;
+        public int MemoryPercent { get; set; } = 85;
         public int MonitorInterval { get; set; } = 5;
-        public int MissingCount { get; set; } = 3;
+        public int MissingCount { get; set; } = 6;
         public bool SkipSetup { get; set; }
         /// <summary>
         /// BetterGI 进程内存阈值（MB），超过则重启。0 表示禁用进程级监控。
@@ -449,7 +449,7 @@ class Program
         Console.WriteLine("  BGIguard.exe reset                 重置配置为默认值");
         Console.WriteLine("  BGIguard.exe help                  显示帮助");
         Console.WriteLine();
-        Console.WriteLine("默认值: 系统内存=95%, 监控间隔=5秒, 丢失计数=3次, 进程内存=4096MB, 跳过设置=否");
+        Console.WriteLine("默认值: 系统内存=85%, 监控间隔=5秒, 丢失计数=6次, 进程内存=4096MB, 跳过设置=否");
     }
 
     /// <summary>
@@ -608,11 +608,11 @@ class Program
             }
             // 验证并修正
             if (config.MemoryPercent <= 0 || config.MemoryPercent > 100)
-                config.MemoryPercent = 95;
+                config.MemoryPercent = 85;
             if (config.MonitorInterval <= 0)
                 config.MonitorInterval = 5;
             if (config.MissingCount <= 0 || config.MissingCount > 10)
-                config.MissingCount = 3;
+                config.MissingCount = 6;
             if (config.BetterGiMemoryLimitMB < 0)
                 config.BetterGiMemoryLimitMB = 4096;
         }

@@ -78,7 +78,7 @@
 
 1. **进程丢失计数**:
    - 记录 BetterGI.exe 进程丢失的连续次数
-   - 连续丢失达到阈值（默认 3 次）才触发重启
+   - 连续丢失达到阈值（默认 **6 次**）才触发重启
    - 进程恢复后重置计数
 
 2. **游戏进程检测**:
@@ -94,7 +94,7 @@
 4. **游戏退出处理**:
    - 当 `YuanShen.exe` 和 `GenshinImpact.exe` 均不存在时
    - **通过用户匹配终止** `BetterGI.exe` 进程
-   - 使用与 BetterGI 相同的丢失计数阈值（默认 3 次）
+   - 使用与 BetterGI 相同的丢失计数阈值（默认 6 次）
    - 连续检测达到阈值才触发重启，未达到只记录警告
 
 5. **BetterGI.exe 独立运行**:
@@ -124,7 +124,7 @@
 **默认阈值**:
 | 类型 | 默认值 | 描述 |
 |------|--------|------|
-| 内存阈值 | 95% | 系统总内存占用百分比 |
+| 内存阈值 | 85% | 系统总内存占用百分比 |
 
 **配置范围**: 1-100%
 
@@ -246,9 +246,9 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 ```json
 {
   "BetterGiPath": "D:\\Games\\BetterGI\\BetterGI.exe",
-  "MemoryPercent": 95,
+  "MemoryPercent": 85,
   "MonitorInterval": 5,
-  "MissingCount": 3,
+  "MissingCount": 6,
   "SkipSetup": false
 }
 ```
@@ -257,9 +257,9 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 | 配置项 | 默认值 | 范围 | 描述 |
 |--------|--------|------|------|
 | BetterGiPath | 自动检测 | 有效路径 | BetterGI.exe 完整路径 |
-| MemoryPercent | 95% | 1-100% | 系统整体内存占用百分比 |
+| MemoryPercent | 85% | 1-100% | 系统整体内存占用百分比 |
 | MonitorInterval | 5秒 | 1-999 | 守护循环检测间隔 |
-| MissingCount | 3次 | 1-10 | 连续检测丢失进程次数才触发重启 |
+| MissingCount | 6次 | 1-10 | 连续检测丢失进程次数才触发重启 |
 | SkipSetup | false | true/false | 每次启动是否跳过设置界面 |
 
 **启动检测逻辑**:
@@ -269,9 +269,9 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 4. 若配置文件也无路径，则显示设置界面要求用户设置
 
 **配置值验证**:
-- MemoryPercent: 超出范围时恢复默认值 95
+- MemoryPercent: 超出范围时恢复默认值 85
 - MonitorInterval: <= 0 时恢复默认值 5
-- MissingCount: 超出范围时恢复默认值 3
+- MissingCount: 超出范围时恢复默认值 6
 
 **命令行用法**:
 ```
@@ -289,13 +289,14 @@ BGIguard.exe help               显示帮助
 **交互式菜单**:
 无参数启动时显示交互式菜单，可选择：
 1. 修改 BetterGI 路径
-2. 修改内存阈值
+1. 修改系统内存阈值
 3. 修改监控间隔
 4. 修改丢失计数阈值
-5. 启动守护进程
-6. 跳过设置直接启动
-7. 重置配置
-8. 退出
+5. 修改进程内存阈值
+6. 启动守护进程
+7. 跳过设置直接启动
+8. 重置配置
+9. 退出
 
 ---
 

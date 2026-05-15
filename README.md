@@ -39,9 +39,9 @@ BGIguard.exe help               # 显示帮助
 
 | 配置项 | 默认值 | 取值范围 | 说明 |
 |--------|--------|----------|------|
-| 内存阈值 | 95% | 1-100% | 物理+虚拟内存占用百分比，超阈值重启 BetterGI |
+| 系统内存阈值 | 85% | 1-100% | 物理+虚拟内存占用百分比，超阈值重启 BetterGI |
 | 监控间隔 | 5秒 | 1-999秒 | 守护循环检测间隔 |
-| 丢失计数阈值 | 3次 | 1-10次 | 连续检测丢失进程次数才触发重启 |
+| 丢失计数阈值 | 6次 | 1-10次 | 连续检测丢失进程次数才触发重启 |
 | 跳过设置 | false | true/false | 每次启动是否跳过设置界面 |
 
 ### 配置文件说明
@@ -50,7 +50,7 @@ BGIguard.exe help               # 显示帮助
 - 示例: `D:\Games\BetterGI\BetterGI.exe`
 - 支持带引号输入
 
-**MemoryPercent**: 内存阈值
+**MemoryPercent**: 系统内存阈值
 - 系统总内存（物理+虚拟内存）占用百分比
 - 超过此值时自动终止并重启 BetterGI
 
@@ -71,9 +71,9 @@ BGIguard.exe help               # 显示帮助
 ```json
 {
   "BetterGiPath": "D:\\Games\\BetterGI\\BetterGI.exe",
-  "MemoryPercent": 95,
+  "MemoryPercent": 85,
   "MonitorInterval": 5,
-  "MissingCount": 3,
+  "MissingCount": 6,
   "SkipSetup": false
 }
 ```
