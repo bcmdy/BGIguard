@@ -119,6 +119,10 @@ class Program
         public int MonitorInterval { get; set; } = 5;
         public int MissingCount { get; set; } = 3;
         public bool SkipSetup { get; set; }
+        /// <summary>
+        /// BetterGI 进程内存阈值（MB），超过则重启。0 表示禁用进程级监控。
+        /// </summary>
+        public int BetterGiMemoryLimitMB { get; set; } = 4096;
     }
 
     // PEB 偏移量（动态获取）
@@ -150,13 +154,14 @@ class Program
     private static int _memoryPercent = 95;
     private static int _missingCountThreshold = 3;
     private static bool _skipSetup = false;
+    private static int _betterGiMemoryLimitMB = 4096;
 
     // 丢失计数
     private static int _missingCount = 0;
     private static int _gameExitCount = 0;
 
     // 配置缓存
-    private static (string betterGiPath, int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup)? _configCache = null;
+    private static (string betterGiPath, int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup, int betterGiMemoryLimitMB)? _configCache = null;
     private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     // 获取显示版本
@@ -180,6 +185,7 @@ class Program
         _monitorIntervalMs = initConfig.monitorIntervalSeconds * 1000;
         _memoryPercent = initConfig.memoryPercent;
         _missingCountThreshold = initConfig.missingCountThreshold;
+        _betterGiMemoryLimitMB = initConfig.betterGiMemoryLimitMB;
 
         // 检测 BetterGI.exe 路径
         if (!DetectBetterGiPath())
@@ -203,6 +209,7 @@ class Program
         // 记录启动日志
         Log("INFO", "BGIguard 启动成功");
         Log("INFO", $"BetterGI路径: {_betterGiExePath}");
+        Log("INFO", $"进程内存阈值: {(_betterGiMemoryLimitMB > 0 ? $"{_betterGiMemoryLimitMB}MB" : "已禁用")}");
 
         // 处理单实例保护
         HandleSingleInstance();
@@ -311,7 +318,7 @@ class Program
                         if (int.TryParse(args[2], out int mem) && mem > 0 && mem <= 100)
                         {
                             var cfg = LoadConfig();
-                            SaveConfig(mem, cfg.monitorIntervalSeconds, cfg.missingCountThreshold, cfg.skipSetup);
+                            SaveConfig(mem, cfg.monitorIntervalSeconds, cfg.missingCountThreshold, cfg.skipSetup, cfg.betterGiMemoryLimitMB);
                             Console.WriteLine($"内存阈值已设置为 {mem}%");
                         }
                         else
@@ -324,7 +331,7 @@ class Program
                         if (int.TryParse(args[2], out int interval) && interval > 0)
                         {
                             var cfg = LoadConfig();
-                            SaveConfig(cfg.memoryPercent, interval, cfg.missingCountThreshold, cfg.skipSetup);
+                            SaveConfig(cfg.memoryPercent, interval, cfg.missingCountThreshold, cfg.skipSetup, cfg.betterGiMemoryLimitMB);
                             Console.WriteLine($"监控间隔已设置为 {interval} 秒");
                         }
                         else
@@ -337,7 +344,7 @@ class Program
                         if (int.TryParse(args[2], out int count) && count > 0 && count <= 10)
                         {
                             var cfg = LoadConfig();
-                            SaveConfig(cfg.memoryPercent, cfg.monitorIntervalSeconds, count, cfg.skipSetup);
+                            SaveConfig(cfg.memoryPercent, cfg.monitorIntervalSeconds, count, cfg.skipSetup, cfg.betterGiMemoryLimitMB);
                             Console.WriteLine($"丢失计数阈值已设置为 {count} 次");
                         }
                         else
@@ -349,8 +356,24 @@ class Program
                     {
                         var cfg = LoadConfig();
                         bool newSkip = !cfg.skipSetup;
-                        SaveConfig(cfg.memoryPercent, cfg.monitorIntervalSeconds, cfg.missingCountThreshold, newSkip);
+                        SaveConfig(cfg.memoryPercent, cfg.monitorIntervalSeconds, cfg.missingCountThreshold, newSkip, cfg.betterGiMemoryLimitMB);
                         Console.WriteLine($"跳过设置界面已设置为: {newSkip}");
+                    }
+                    else if (args[1].ToLower() == "memlimit")
+                    {
+                        if (int.TryParse(args[2], out int limit) && limit >= 0)
+                        {
+                            var cfg = LoadConfig();
+                            SaveConfig(cfg.memoryPercent, cfg.monitorIntervalSeconds, cfg.missingCountThreshold, cfg.skipSetup, limit);
+                            if (limit == 0)
+                                Console.WriteLine("进程内存监控已禁用");
+                            else
+                                Console.WriteLine($"进程内存阈值已设置为 {limit}MB");
+                        }
+                        else
+                        {
+                            Console.WriteLine("错误: 进程内存阈值应为 >= 0 的整数 (0 表示禁用)");
+                        }
                     }
                     else
                     {
@@ -391,6 +414,7 @@ class Program
                 _memoryPercent = config.memoryPercent;
                 _missingCountThreshold = config.missingCountThreshold;
                 _skipSetup = config.skipSetup;
+                _betterGiMemoryLimitMB = config.betterGiMemoryLimitMB;
 
                 // 检测 BetterGI 路径，未找到则强制要求设置
                 if (!DetectBetterGiPath())
@@ -414,17 +438,18 @@ class Program
         Console.WriteLine("BGIguard 命令行工具");
         Console.WriteLine();
         Console.WriteLine("用法:");
-        Console.WriteLine("  BGIguard.exe                    启动守护进程（无参数）");
-        Console.WriteLine("  BGIguard.exe set path <路径>    设置 BetterGI.exe 路径");
-        Console.WriteLine("  BGIguard.exe set memory <值>    设置内存阈值 (1-100)");
-        Console.WriteLine("  BGIguard.exe set interval <值>  设置监控间隔 (秒)");
-        Console.WriteLine("  BGIguard.exe set count <值>     设置丢失计数阈值 (1-10)");
-        Console.WriteLine("  BGIguard.exe set skip           设置/取消跳过设置界面");
-        Console.WriteLine("  BGIguard.exe set show           显示当前配置");
-        Console.WriteLine("  BGIguard.exe reset              重置配置为默认值");
-        Console.WriteLine("  BGIguard.exe help               显示帮助");
+        Console.WriteLine("  BGIguard.exe                       启动守护进程（无参数）");
+        Console.WriteLine("  BGIguard.exe set path <路径>       设置 BetterGI.exe 路径");
+        Console.WriteLine("  BGIguard.exe set memory <值>       设置系统内存阈值 (1-100)");
+        Console.WriteLine("  BGIguard.exe set interval <值>     设置监控间隔 (秒)");
+        Console.WriteLine("  BGIguard.exe set count <值>        设置丢失计数阈值 (1-10)");
+        Console.WriteLine("  BGIguard.exe set memlimit <值>     设置进程内存阈值 MB (0=禁用)");
+        Console.WriteLine("  BGIguard.exe set skip              设置/取消跳过设置界面");
+        Console.WriteLine("  BGIguard.exe set show              显示当前配置");
+        Console.WriteLine("  BGIguard.exe reset                 重置配置为默认值");
+        Console.WriteLine("  BGIguard.exe help                  显示帮助");
         Console.WriteLine();
-        Console.WriteLine("默认值: 内存阈值=95%, 监控间隔=5秒, 丢失计数=2次, 跳过设置=否");
+        Console.WriteLine("默认值: 系统内存=95%, 监控间隔=5秒, 丢失计数=3次, 进程内存=4096MB, 跳过设置=否");
     }
 
     /// <summary>
@@ -435,9 +460,10 @@ class Program
         var config = LoadConfig();
         Console.WriteLine("当前配置:");
         Console.WriteLine($"  BetterGI路径: {config.betterGiPath}");
-        Console.WriteLine($"  内存阈值: {config.memoryPercent}%");
+        Console.WriteLine($"  系统内存阈值: {config.memoryPercent}%");
         Console.WriteLine($"  监控间隔: {config.monitorIntervalSeconds} 秒");
         Console.WriteLine($"  丢失计数阈值: {config.missingCountThreshold} 次");
+        Console.WriteLine($"  进程内存阈值: {(config.betterGiMemoryLimitMB > 0 ? $"{config.betterGiMemoryLimitMB}MB" : "已禁用")}");
         Console.WriteLine($"  跳过设置: {config.skipSetup}");
     }
 
@@ -452,23 +478,25 @@ class Program
         var config = LoadConfig();
         Console.WriteLine($"当前配置:");
         Console.WriteLine($"  BetterGI路径: {config.betterGiPath}");
-        Console.WriteLine($"  内存阈值: {config.memoryPercent}%");
+        Console.WriteLine($"  系统内存阈值: {config.memoryPercent}%");
         Console.WriteLine($"  监控间隔: {config.monitorIntervalSeconds} 秒");
         Console.WriteLine($"  丢失计数阈值: {config.missingCountThreshold} 次");
+        Console.WriteLine($"  进程内存阈值: {(config.betterGiMemoryLimitMB > 0 ? $"{config.betterGiMemoryLimitMB}MB" : "已禁用")}");
         Console.WriteLine();
 
         Console.WriteLine("请选择操作:");
         Console.WriteLine("  1. 修改 BetterGI 路径        (BetterGI.exe 完整路径)");
-        Console.WriteLine("  2. 修改内存阈值            (1-100%，超阈值重启)");
+        Console.WriteLine("  2. 修改系统内存阈值        (1-100%，超阈值重启)");
         Console.WriteLine("  3. 修改监控间隔            (1-999秒，检测频率)");
         Console.WriteLine("  4. 修改丢失计数阈值        (1-10次，连续退出触发重启)");
-        Console.WriteLine("  5. 启动守护进程            (进入守护监控模式)");
-        Console.WriteLine("  6. 跳过设置直接启动        (直接进入守护)");
-        Console.WriteLine("  7. 重置配置                (恢复默认设置)");
-        Console.WriteLine("  8. 退出");
+        Console.WriteLine("  5. 修改进程内存阈值        (MB, 0=禁用, BetterGI独占内存超限重启)");
+        Console.WriteLine("  6. 启动守护进程            (进入守护监控模式)");
+        Console.WriteLine("  7. 跳过设置直接启动        (直接进入守护)");
+        Console.WriteLine("  8. 重置配置                (恢复默认设置)");
+        Console.WriteLine("  9. 退出");
         Console.WriteLine();
 
-        Console.Write("请输入选项 (1-8): ");
+        Console.Write("请输入选项 (1-9): ");
         string? input = Console.ReadLine();
 
         switch (input)
@@ -492,12 +520,12 @@ class Program
                 break;
 
             case "2":
-                Console.Write("请输入内存阈值 (1-100): ");
+                Console.Write("请输入系统内存阈值 (1-100): ");
                 if (int.TryParse(Console.ReadLine(), out int mem) && mem > 0 && mem <= 100)
                 {
                     var cfg2 = LoadConfig();
-                    SaveConfig(mem, cfg2.monitorIntervalSeconds, cfg2.missingCountThreshold, cfg2.skipSetup);
-                    Console.WriteLine($"内存阈值已设置为 {mem}%");
+                    SaveConfig(mem, cfg2.monitorIntervalSeconds, cfg2.missingCountThreshold, cfg2.skipSetup, cfg2.betterGiMemoryLimitMB);
+                    Console.WriteLine($"系统内存阈值已设置为 {mem}%");
                 }
                 break;
 
@@ -506,7 +534,7 @@ class Program
                 if (int.TryParse(Console.ReadLine(), out int interval) && interval > 0)
                 {
                     var cfg3 = LoadConfig();
-                    SaveConfig(cfg3.memoryPercent, interval, cfg3.missingCountThreshold, cfg3.skipSetup);
+                    SaveConfig(cfg3.memoryPercent, interval, cfg3.missingCountThreshold, cfg3.skipSetup, cfg3.betterGiMemoryLimitMB);
                     Console.WriteLine($"监控间隔已设置为 {interval} 秒");
                 }
                 break;
@@ -516,21 +544,34 @@ class Program
                 if (int.TryParse(Console.ReadLine(), out int count) && count > 0 && count <= 10)
                 {
                     var cfg4 = LoadConfig();
-                    SaveConfig(cfg4.memoryPercent, cfg4.monitorIntervalSeconds, count, cfg4.skipSetup);
+                    SaveConfig(cfg4.memoryPercent, cfg4.monitorIntervalSeconds, count, cfg4.skipSetup, cfg4.betterGiMemoryLimitMB);
                     Console.WriteLine($"丢失计数阈值已设置为 {count} 次");
                 }
                 break;
 
             case "5":
+                Console.Write("请输入进程内存阈值 (MB, 0=禁用): ");
+                if (int.TryParse(Console.ReadLine(), out int limit) && limit >= 0)
+                {
+                    var cfg5 = LoadConfig();
+                    SaveConfig(cfg5.memoryPercent, cfg5.monitorIntervalSeconds, cfg5.missingCountThreshold, cfg5.skipSetup, limit);
+                    if (limit == 0)
+                        Console.WriteLine("进程内存监控已禁用");
+                    else
+                        Console.WriteLine($"进程内存阈值已设置为 {limit}MB");
+                }
                 break;
 
             case "6":
-                var cfg6 = LoadConfig();
-                SaveConfig(cfg6.memoryPercent, cfg6.monitorIntervalSeconds, cfg6.missingCountThreshold, true);
-                Console.WriteLine("已设置跳过设置界面");
                 break;
 
             case "7":
+                var cfg7 = LoadConfig();
+                SaveConfig(cfg7.memoryPercent, cfg7.monitorIntervalSeconds, cfg7.missingCountThreshold, true, cfg7.betterGiMemoryLimitMB);
+                Console.WriteLine("已设置跳过设置界面");
+                break;
+
+            case "8":
                 if (File.Exists(ConfigFilePath))
                 {
                     File.Delete(ConfigFilePath);
@@ -538,7 +579,7 @@ class Program
                 }
                 break;
 
-            case "8":
+            case "9":
                 Environment.Exit(0);
                 break;
 
@@ -552,7 +593,7 @@ class Program
     /// <summary>
     /// 加载配置（带缓存）
     /// </summary>
-    private static (string betterGiPath, int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup) LoadConfig()
+    private static (string betterGiPath, int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup, int betterGiMemoryLimitMB) LoadConfig()
     {
         if (_configCache.HasValue)
             return _configCache.Value;
@@ -572,13 +613,15 @@ class Program
                 config.MonitorInterval = 5;
             if (config.MissingCount <= 0 || config.MissingCount > 10)
                 config.MissingCount = 3;
+            if (config.BetterGiMemoryLimitMB < 0)
+                config.BetterGiMemoryLimitMB = 4096;
         }
         catch (Exception ex)
         {
             Log("ERROR", $"加载配置文件失败: {ex.Message}");
         }
 
-        var result = (config.BetterGiPath, config.MemoryPercent, config.MonitorInterval, config.MissingCount, config.SkipSetup);
+        var result = (config.BetterGiPath, config.MemoryPercent, config.MonitorInterval, config.MissingCount, config.SkipSetup, config.BetterGiMemoryLimitMB);
         _configCache = result;
         return result;
     }
@@ -586,7 +629,7 @@ class Program
     /// <summary>
     /// 保存配置
     /// </summary>
-    private static void SaveConfig(int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup)
+    private static void SaveConfig(int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup, int betterGiMemoryLimitMB)
     {
         _configCache = null;
         var config = new Config
@@ -594,7 +637,8 @@ class Program
             MemoryPercent = memoryPercent,
             MonitorInterval = monitorIntervalSeconds,
             MissingCount = missingCountThreshold,
-            SkipSetup = skipSetup
+            SkipSetup = skipSetup,
+            BetterGiMemoryLimitMB = betterGiMemoryLimitMB
         };
         var existing = LoadConfig();
         config.BetterGiPath = existing.betterGiPath;
@@ -657,7 +701,8 @@ class Program
             MemoryPercent = existing.memoryPercent,
             MonitorInterval = existing.monitorIntervalSeconds,
             MissingCount = existing.missingCountThreshold,
-            SkipSetup = existing.skipSetup
+            SkipSetup = existing.skipSetup,
+            BetterGiMemoryLimitMB = existing.betterGiMemoryLimitMB
         };
         SaveConfigFile(config);
     }
@@ -735,10 +780,11 @@ class Program
 
         try
         {
-            // 打开目标进程（权限不足时回退到有限查询权限）
+            // 打开目标进程（只需查询信息权限，无需 VM_READ）
             hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, false, processId);
             if (hProcess == IntPtr.Zero)
             {
+                // 权限不足时回退到有限查询权限
                 hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
                 if (hProcess == IntPtr.Zero)
                     return "";
@@ -763,20 +809,23 @@ class Program
             if (tokenUser.User.Sid == IntPtr.Zero)
                 return "";
 
-            // 将 SID 转换为账户名
-            int nameSize = 256;
-            int domainSize = 256;
+            // 获取所需缓冲区大小
+            int nameSize = 0, domainSize = 0;
+            if (!LookupAccountSid(null, tokenUser.User.Sid, null!, ref nameSize, null!, ref domainSize, out _))
+            {
+                if (nameSize == 0) return "";
+            }
+
             var nameBuilder = new StringBuilder(nameSize);
             var domainBuilder = new StringBuilder(domainSize);
-
             if (!LookupAccountSid(null, tokenUser.User.Sid, nameBuilder, ref nameSize, domainBuilder, ref domainSize, out _))
                 return "";
 
             return nameBuilder.ToString();
         }
-        catch (Exception ex)
+        catch
         {
-            Log("WARN", $"获取进程所有者失败 (PID:{processId}): {ex.Message}");
+            // 静默失败：权限不足或进程已退出是正常情况，避免日志风暴
             return "";
         }
         finally
@@ -867,27 +916,50 @@ class Program
                     }
                 }
 
-                // 3. 检查游戏进程
+                // 2. 检查游戏进程
                 var (gameRunning, gameProcesses) = GetRunningGameProcesses();
 
-                // 4. 检查系统内存
+                // 3. 检查系统内存
                 var (totalMB, usedMB, physicalMB, virtualMB) = GetSystemMemory();
                 long memoryLimitMB = totalMB * _memoryPercent / 100;
                 int usedPercent = (int)(usedMB * 100 / Math.Max(1, totalMB));
 
+                // 4. 检查 BetterGI 进程自身内存（OOM 精准监控）
+                long betterGiMemMB = 0;
+                if (_betterGiMemoryLimitMB > 0 && betterGiRunning)
+                {
+                    betterGiMemMB = GetBetterGiMemoryMB();
+                }
+
                 // 打印检测日志
                 string gameStatus = gameRunning ? string.Join(", ", gameProcesses) : "无";
                 string giStatus = betterGiRunning ? "运行" : $"未运行({_missingCount}/{_missingCountThreshold})";
-                Log("INFO", $"检测 {DateTime.Now:HH:mm:ss} | 内存: {usedPercent}% | BetterGI: {giStatus} | 游戏: {gameStatus}");
+                string giMemStatus = (_betterGiMemoryLimitMB > 0 && betterGiRunning)
+                    ? $" | BetterGI内存: {betterGiMemMB}MB"
+                    : "";
+                Log("INFO", $"检测 {DateTime.Now:HH:mm:ss} | 内存: {usedPercent}% | BetterGI: {giStatus}{giMemStatus} | 游戏: {gameStatus}");
 
                 // 内存警告 (使用配置值-5作为阈值)
                 int memWarningThreshold = Math.Max(1, _memoryPercent - 5);
                 if (usedPercent >= memWarningThreshold)
                 {
-                    Log("WARN", $"[内存警告] 已用: {usedMB}MB/{totalMB}MB ({usedPercent}%) | 物理: {physicalMB}MB | 虚拟: {virtualMB}MB");
+                    Log("WARN", $"[系统内存警告] 已用: {usedMB}MB/{totalMB}MB ({usedPercent}%) | 物理: {physicalMB}MB | 虚拟: {virtualMB}MB");
                 }
 
-                // 判断是否需要重启
+                // ========== 进程级内存超限检查（精准 OOM 防护）==========
+                if (_betterGiMemoryLimitMB > 0 && betterGiRunning && betterGiMemMB > _betterGiMemoryLimitMB)
+                {
+                    Log("WARN", $"[进程内存超限] BetterGI 占用 {betterGiMemMB}MB > 阈值 {_betterGiMemoryLimitMB}MB，正在重启...");
+                    TerminateBetterGiProcessByUser();
+                    Thread.Sleep(RestartDelayMs);
+                    StartBetterGiProcess(_cachedCommand);
+                    Log("INFO", "进程内存超限后已重启");
+                    // 重置相关计数
+                    _missingCount = 0;
+                    continue;  // 本轮已处理，跳过下方逻辑
+                }
+
+                // 判断是否需要重启（BetterGI 丢失）
                 if (!betterGiRunning)
                 {
                     _missingCount++;
@@ -910,14 +982,14 @@ class Program
                     }
                 }
 
-                // 内存超限时重启
+                // 系统内存超限时重启
                 if (usedMB > memoryLimitMB)
                 {
-                    Log("WARN", $"内存超限: {usedMB}MB > {memoryLimitMB}MB ({_memoryPercent}%)");
+                    Log("WARN", $"[系统内存超限] {usedMB}MB > {memoryLimitMB}MB ({_memoryPercent}%)");
                     TerminateBetterGiProcessByUser();
                     Thread.Sleep(RestartDelayMs);
                     StartBetterGiProcess(_cachedCommand);
-                    Log("INFO", "内存超限后已重启");
+                    Log("INFO", "系统内存超限后已重启");
                 }
 
                 // 游戏退出后重启（使用与 BetterGI 相同的计次阈值）
@@ -949,6 +1021,30 @@ class Program
                 Log("ERROR", $"守护循环异常: {ex.Message}");
             }
         }
+    }
+
+    /// <summary>
+    /// 获取 BetterGI 进程当前独占内存（PrivateMemorySize64），单位 MB
+    /// </summary>
+    private static long GetBetterGiMemoryMB()
+    {
+        if (string.IsNullOrEmpty(_betterGiExePath)) return 0;
+
+        foreach (var process in Process.GetProcessesByName(BetterGiExeName.Replace(".exe", "")))
+        {
+            try
+            {
+                if (!IsProcessOwnedByCurrentUser(process.Id))
+                    continue;
+                string? modulePath = process.MainModule?.FileName;
+                if (string.Equals(modulePath, _betterGiExePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    return process.PrivateMemorySize64 / 1024 / 1024;
+                }
+            }
+            catch { }
+        }
+        return 0;
     }
 
     /// <summary>
@@ -1109,12 +1205,12 @@ class Program
 
             foreach (var file in logFiles)
             {
-                try { File.Delete(file); } catch (Exception ex) { Log("ERROR", $"删除旧日志失败: {ex.Message}"); }
+                try { File.Delete(file); } catch { }
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"清理旧日志失败: {ex.Message}");
+            try { Console.WriteLine($"清理旧日志失败: {ex.Message}"); } catch { }
         }
     }
 
