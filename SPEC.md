@@ -136,8 +136,27 @@
 
 **内存警告**:
 - 内存警告阈值 = 配置值 - 5%
-- 例如配置值为 95% 时，内存达到 90% 会发出警告
+- 例如配置值为 85% 时，内存达到 80% 会发出警告
 - 警告不影响自动重启逻辑，仅作为提醒
+
+### 2.8 进程内存监控功能
+
+**检测方式**: 使用 `Process.PrivateMemorySize64` 获取 BetterGI 进程独占内存
+
+**配置项**: `BetterGiMemoryLimitMB`
+- 默认值: 4096 MB
+- 设置为 0 表示禁用进程级内存监控
+
+**处理逻辑**:
+1. 在监控循环中通过进程名匹配获取 BetterGI 进程
+2. 调用 `PrivateMemorySize64` 获取进程独占内存
+3. 若内存超过阈值，立即重启 BetterGI.exe
+4. 进程级监控优先于丢失计数，独立触发重启
+
+**优势**:
+- 精准 OOM 防护：直接监控进程内存占用
+- 立即响应：无需等待连续丢失计数
+- 低开销：仅读取进程内存信息
 
 ### 2.7 日志系统
 
@@ -249,7 +268,8 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
   "MemoryPercent": 85,
   "MonitorInterval": 5,
   "MissingCount": 6,
-  "SkipSetup": false
+  "SkipSetup": false,
+  "BetterGiMemoryLimitMB": 4096
 }
 ```
 
@@ -261,6 +281,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 | MonitorInterval | 5秒 | 1-999 | 守护循环检测间隔 |
 | MissingCount | 6次 | 1-10 | 连续检测丢失进程次数才触发重启 |
 | SkipSetup | false | true/false | 每次启动是否跳过设置界面 |
+| BetterGiMemoryLimitMB | 4096MB | >=0 | 进程内存阈值，0=禁用 |
 
 **启动检测逻辑**:
 1. 程序启动时先检测自身目录下是否存在 `BetterGI.exe`
@@ -277,7 +298,8 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 ```
 BGIguard.exe                    启动守护进程（无参数）
 BGIguard.exe set path <路径>    设置 BetterGI.exe 路径
-BGIguard.exe set memory <值>    设置内存阈值 (1-100)
+BGIguard.exe set memory <值>    设置系统内存阈值 (1-100)
+BGIguard.exe set memlimit <值>   设置进程内存阈值 MB (0=禁用)
 BGIguard.exe set interval <值>  设置监控间隔 (秒)
 BGIguard.exe set count <值>     设置丢失计数阈值 (1-10)
 BGIguard.exe set skip           设置/取消跳过设置界面

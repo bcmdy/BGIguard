@@ -26,7 +26,8 @@ BetterGI 进程守护程序
 
 ```bash
 BGIguard.exe set path <路径>     # 设置 BetterGI.exe 路径
-BGIguard.exe set memory <值>    # 设置内存阈值 (1-100)
+BGIguard.exe set memory <值>    # 设置系统内存阈值 (1-100)
+BGIguard.exe set memlimit <值>   # 设置进程内存阈值 MB (0=禁用)
 BGIguard.exe set interval <值>  # 设置监控间隔 (秒)
 BGIguard.exe set count <值>     # 设置丢失计数阈值 (1-10)
 BGIguard.exe set skip           # 切换跳过设置界面
@@ -40,6 +41,7 @@ BGIguard.exe help               # 显示帮助
 | 配置项 | 默认值 | 取值范围 | 说明 |
 |--------|--------|----------|------|
 | 系统内存阈值 | 85% | 1-100% | 物理+虚拟内存占用百分比，超阈值重启 BetterGI |
+| 进程内存阈值 | 4096MB | >=0 MB | BetterGI 进程独占内存，0=禁用 |
 | 监控间隔 | 5秒 | 1-999秒 | 守护循环检测间隔 |
 | 丢失计数阈值 | 6次 | 1-10次 | 连续检测丢失进程次数才触发重启 |
 | 跳过设置 | false | true/false | 每次启动是否跳过设置界面 |
@@ -53,6 +55,11 @@ BGIguard.exe help               # 显示帮助
 **MemoryPercent**: 系统内存阈值
 - 系统总内存（物理+虚拟内存）占用百分比
 - 超过此值时自动终止并重启 BetterGI
+
+**BetterGiMemoryLimitMB**: 进程内存阈值
+- BetterGI 进程独占内存（MB），通过 PrivateMemorySize64 获取
+- 超过此值时立即重启 BetterGI，提供精准 OOM 防护
+- 设置为 0 表示禁用进程级内存监控
 
 **MonitorInterval**: 监控间隔（秒）
 - 守护循环检测频率
@@ -74,7 +81,8 @@ BGIguard.exe help               # 显示帮助
   "MemoryPercent": 85,
   "MonitorInterval": 5,
   "MissingCount": 6,
-  "SkipSetup": false
+  "SkipSetup": false,
+  "BetterGiMemoryLimitMB": 4096
 }
 ```
 
