@@ -22,7 +22,7 @@
 | 掉线重连 | 检测游戏进程状态，断线后自动重连 |
 | 单实例保护 | 防止多开，确保只有一个守护实例运行 |
 | 游戏进程联动 | 监控原神客户端进程状态 |
-| **多用户隔离** | 进程检查与终止按用户隔���，只操作当前用户进程 |
+| **多用户隔离** | 进程检查与终止按用户隔离，只操作当前用户进程 |
 | 命令行设置 | 支持命令行参数配置各项参数 |
 | 路径引号支持 | 支持带引号的路径输入，自动去除首尾引号 |
 | 跳过设置 | 可配置为跳过设置界面直接启动守护 |
@@ -177,12 +177,12 @@
 
 **日志示例**:
 ```
-[2026-05-15 14:30:00.123] [BGIguard_v3.1.0] [INFO] BGIguard 启动成功 (用户:Bcmdy)
-[2026-05-15 14:30:00.456] [BGIguard_v3.1.0] [INFO] BetterGI路径: D:\Games\BetterGI\BetterGI.exe
-[2026-05-15 14:30:05.789] [BGIguard_v3.1.0] [INFO] 检测 14:30:05 | 内存: 45% | BetterGI: 运行 | 游戏: YuanShen
-[2026-05-15 14:35:00.001] [BGIguard_v3.1.0] [WARN] BetterGI.exe 丢失 (第 1 次)
-[2026-05-15 14:35:10.123] [BGIguard_v3.1.0] [INFO] 连续丢失达到阈值，正在重启... (用户:Bcmdy)
-[2026-05-15 14:40:00.123] [BGIguard_v3.1.0] [INFO] 已终止 BetterGI.exe PID:1234 (用户:Bcmdy)
+[2026-05-15 14:30:00.123] [BGIguard_v4.0.0] [INFO] BGIguard 启动成功 (用户:Bcmdy)
+[2026-05-15 14:30:00.456] [BGIguard_v4.0.0] [INFO] BetterGI路径: D:\Games\BetterGI\BetterGI.exe
+[2026-05-15 14:30:05.789] [BGIguard_v4.0.0] [INFO] 检测 14:30:05 | 内存: 45% | BetterGI: 运行 | 游戏: YuanShen
+[2026-05-15 14:35:00.001] [BGIguard_v4.0.0] [WARN] BetterGI.exe 丢失 (第 1 次)
+[2026-05-15 14:35:10.123] [BGIguard_v4.0.0] [INFO] 连续丢失达到阈值，正在重启... (用户:Bcmdy)
+[2026-05-15 14:40:00.123] [BGIguard_v4.0.0] [INFO] 已终止 BetterGI.exe PID:1234 (用户:Bcmdy)
 ```
 
 ---
@@ -193,7 +193,7 @@
 
 - **语言**: C# (.NET 8.0)
 - **目标框架**: net8.0-windows
-- **发布模式**: 自包含单文件发布 (win-x64)
+- **发布模式**: 默认依赖 .NET 8 Runtime 的单文件发布；可选自包含单文件发布 (win-x64)
 
 ### 3.2 项目结构
 
@@ -221,12 +221,17 @@ BGIguard/
 ### 3.4 发布命令
 
 ```bash
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ./publish
+dotnet publish -c Release -p:PublishSingleFile=true --self-contained false -p:DebugType=none -p:DebugSymbols=false -o ./publish
 ```
 
 或使用构建脚本:
 ```powershell
-.\build.ps1 -Version 3.1.0
+.\build.ps1 -Version 4.0.0
+```
+
+自包含发布命令:
+```bash
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ./publish
 ```
 
 ---
@@ -240,9 +245,9 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
          │
          ▼
 ┌─────────────────────────────────────────────────┐
-│ 1. 加载配置 (JSON 格式)                         │
-│ 2. 检测 BetterGI.exe 路径                       │
-│ 3. 处理命令行参数                               │
+│ 1. 处理命令行参数                               │
+│ 2. 加载配置 (JSON 格式)                         │
+│ 3. 检测 BetterGI.exe 路径                       │
 │ 4. 创建互斥体 (单实例保护)                      │
 │ 5. 按用户检查并终止旧守护进程                   │
 │ 6. 启动 BetterGI.exe                            │
@@ -349,7 +354,7 @@ BGIguard.exe help               显示帮助
 
 ## 8. 常见问题
 
-| ���象 | 解决 |
+| 现象 | 解决 |
 |------|------|
 | 启动后未启动 BetterGI | 检查同目录是否存在 `BetterGI.exe`；查看日志报错 |
 | 重复启动多个窗口 | 守护器自带单实例保护，只会运行一个实例 |

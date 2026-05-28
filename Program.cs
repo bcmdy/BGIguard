@@ -162,7 +162,11 @@ class Program
 
     // 配置缓存
     private static (string betterGiPath, int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup, int betterGiMemoryLimitMB)? _configCache = null;
+    private static DateTime _configCacheLastWriteUtc = DateTime.MinValue;
     private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+
+    // 日志清理状态
+    private static DateTime _lastLogCleanupDate = DateTime.MinValue;
 
     // 获取显示版本
     private static string GetDisplayVersion()
@@ -179,31 +183,26 @@ class Program
         string version = GetDisplayVersion();
         Console.Title = $"BetterGI 进程守护 v{version} By:Bcmdy";
 
-        // 加载配置
-        var initConfig = LoadConfig();
-        _skipSetup = initConfig.skipSetup;
-        _monitorIntervalMs = initConfig.monitorIntervalSeconds * 1000;
-        _memoryPercent = initConfig.memoryPercent;
-        _missingCountThreshold = initConfig.missingCountThreshold;
-        _betterGiMemoryLimitMB = initConfig.betterGiMemoryLimitMB;
-
-        // 检测 BetterGI.exe 路径
-        if (!DetectBetterGiPath())
-        {
-            PromptForBetterGiPath();
-        }
-
-        // 处理命令行参数
+        // 先处理命令行参数，避免 help/reset/set show 等命令被 BetterGI 路径检测阻塞
         if (args.Length > 0)
         {
             HandleCommandLine(args);
             return;
         }
 
+        // 加载配置
+        var initConfig = LoadConfig();
+        ApplyRuntimeConfig(initConfig);
+
+        // 检测 BetterGI.exe 路径
+        EnsureBetterGiPath();
+
         // 无参数启动时显示设置界面（除非已跳过）
         if (!_skipSetup)
         {
             ShowCommandLineSetup();
+            ApplyRuntimeConfig(LoadConfig());
+            EnsureBetterGiPath();
         }
 
         // 记录启动日志
@@ -237,6 +236,36 @@ class Program
 
         // 进入守护主循环
         RunGuardLoop();
+    }
+
+    /// <summary>
+    /// 确保已设置可用的 BetterGI.exe 路径。
+    /// </summary>
+    private static void EnsureBetterGiPath()
+    {
+        if (!DetectBetterGiPath())
+        {
+            PromptForBetterGiPath();
+        }
+    }
+
+    /// <summary>
+    /// 应用运行时配置，供启动和热更新复用。
+    /// </summary>
+    private static void ApplyRuntimeConfig((string betterGiPath, int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup, int betterGiMemoryLimitMB) config)
+    {
+        _skipSetup = config.skipSetup;
+        _monitorIntervalMs = config.monitorIntervalSeconds * 1000;
+        _memoryPercent = config.memoryPercent;
+        _missingCountThreshold = config.missingCountThreshold;
+        _betterGiMemoryLimitMB = config.betterGiMemoryLimitMB;
+
+        if (!string.IsNullOrEmpty(config.betterGiPath) &&
+            File.Exists(config.betterGiPath) &&
+            !string.Equals(_betterGiExePath, config.betterGiPath, StringComparison.OrdinalIgnoreCase))
+        {
+            _betterGiExePath = config.betterGiPath;
+        }
     }
 
     /// <summary>
@@ -399,6 +428,7 @@ class Program
                 if (File.Exists(ConfigFilePath))
                 {
                     File.Delete(ConfigFilePath);
+                    ClearConfigCache();
                     Console.WriteLine("配置已重置为默认值");
                 }
                 else
@@ -410,17 +440,10 @@ class Program
             default:
                 // 正常运行模式
                 var config = LoadConfig();
-                _monitorIntervalMs = config.monitorIntervalSeconds * 1000;
-                _memoryPercent = config.memoryPercent;
-                _missingCountThreshold = config.missingCountThreshold;
-                _skipSetup = config.skipSetup;
-                _betterGiMemoryLimitMB = config.betterGiMemoryLimitMB;
+                ApplyRuntimeConfig(config);
 
                 // 检测 BetterGI 路径，未找到则强制要求设置
-                if (!DetectBetterGiPath())
-                {
-                    PromptForBetterGiPath();
-                }
+                EnsureBetterGiPath();
 
                 Log("INFO", "BGIguard 启动成功");
                 HandleSingleInstance();
@@ -575,6 +598,7 @@ class Program
                 if (File.Exists(ConfigFilePath))
                 {
                     File.Delete(ConfigFilePath);
+                    ClearConfigCache();
                     Console.WriteLine("配置已重置");
                 }
                 break;
@@ -595,7 +619,8 @@ class Program
     /// </summary>
     private static (string betterGiPath, int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup, int betterGiMemoryLimitMB) LoadConfig()
     {
-        if (_configCache.HasValue)
+        DateTime lastWriteUtc = GetConfigLastWriteUtc();
+        if (_configCache.HasValue && _configCacheLastWriteUtc == lastWriteUtc)
             return _configCache.Value;
 
         var config = new Config();
@@ -623,7 +648,32 @@ class Program
 
         var result = (config.BetterGiPath, config.MemoryPercent, config.MonitorInterval, config.MissingCount, config.SkipSetup, config.BetterGiMemoryLimitMB);
         _configCache = result;
+        _configCacheLastWriteUtc = lastWriteUtc;
         return result;
+    }
+
+    /// <summary>
+    /// 获取配置文件最后修改时间，用于配置热更新。
+    /// </summary>
+    private static DateTime GetConfigLastWriteUtc()
+    {
+        try
+        {
+            return File.Exists(ConfigFilePath) ? File.GetLastWriteTimeUtc(ConfigFilePath) : DateTime.MinValue;
+        }
+        catch
+        {
+            return DateTime.MinValue;
+        }
+    }
+
+    /// <summary>
+    /// 清空配置缓存。
+    /// </summary>
+    private static void ClearConfigCache()
+    {
+        _configCache = null;
+        _configCacheLastWriteUtc = DateTime.MinValue;
     }
 
     /// <summary>
@@ -631,7 +681,7 @@ class Program
     /// </summary>
     private static void SaveConfig(int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup, int betterGiMemoryLimitMB)
     {
-        _configCache = null;
+        ClearConfigCache();
         var config = new Config
         {
             MemoryPercent = memoryPercent,
@@ -652,6 +702,7 @@ class Program
     {
         var json = System.Text.Json.JsonSerializer.Serialize(config, JsonOptions);
         File.WriteAllText(ConfigFilePath, json);
+        ClearConfigCache();
     }
 
     /// <summary>
@@ -693,7 +744,7 @@ class Program
         if (!ValidateAndNormalizePath(path, out string normalizedPath))
             return;
 
-        _configCache = null;
+        ClearConfigCache();
         var existing = LoadConfig();
         var config = new Config
         {
@@ -895,10 +946,13 @@ class Program
 
         while (true)
         {
+            ApplyRuntimeConfig(LoadConfig());
             Thread.Sleep(_monitorIntervalMs);
 
             try
             {
+                ApplyRuntimeConfig(LoadConfig());
+
                 // 1. 获取 BetterGI 进程信息并缓存（合并遍历）
                 var (betterGiRunning, commandLine) = GetBetterGiInfo();
                 if (betterGiRunning && commandLine != null)
@@ -1182,7 +1236,13 @@ class Program
                 string logFileName = $"{LogFilePrefix}{DateTime.Now:yyyyMMdd}.log";
                 string logPath = Path.Combine(_exeDirectory, logFileName);
                 File.AppendAllText(logPath, logMessage + Environment.NewLine, Encoding.UTF8);
-                CleanOldLogs();
+
+                DateTime today = DateTime.Today;
+                if (_lastLogCleanupDate != today)
+                {
+                    CleanOldLogs();
+                    _lastLogCleanupDate = today;
+                }
             }
             catch (Exception ex)
             {

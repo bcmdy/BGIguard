@@ -94,18 +94,18 @@ BGIguard.exe help               # 显示帮助
 
 每次检测输出简洁日志：
 ```
-[2026-04-24 14:30:05.123] [BGIguard_v3.1.0] [INFO] 检测 14:30:05 | 内存: 45% | BetterGI: 运行 | 游戏: YuanShen
+[2026-04-24 14:30:05.123] [BGIguard_v4.0.0] [INFO] 检测 14:30:05 | 内存: 45% | BetterGI: 运行 | 游戏: YuanShen
 ```
 
 内存警告（ >= 配置值-5% ）：
 ```
-[2026-04-24 14:35:00.123] [BGIguard_v3.1.0] [WARN] [内存警告] 已用: 32768MB/49152MB (67%) | 物理: 16384MB | 虚拟: 32768MB
+[2026-04-24 14:35:00.123] [BGIguard_v4.0.0] [WARN] [内存警告] 已用: 32768MB/49152MB (67%) | 物理: 16384MB | 虚拟: 32768MB
 ```
 
 进程终止日志（含用户信息）：
 ```
-[2026-04-24 14:40:00.123] [BGIguard_v3.1.0] [INFO] 已终止 BetterGI.exe PID:1234 (用户:Bcmdy)
-[2026-04-24 14:40:00.456] [BGIguard_v3.1.0] [WARN] BetterGI.exe PID:5678 属于用户 Admin，跳过终止
+[2026-04-24 14:40:00.123] [BGIguard_v4.0.0] [INFO] 已终止 BetterGI.exe PID:1234 (用户:Bcmdy)
+[2026-04-24 14:40:00.456] [BGIguard_v4.0.0] [WARN] BetterGI.exe PID:5678 属于用户 Admin，跳过终止
 ```
 
 日志文件：`BGI_guardYYYYMMDD.log`（UTF8 编码，按日生成）
@@ -142,10 +142,15 @@ BGIguard/
 
 ### PowerShell 脚本
 ```powershell
-.\build.ps1 -Version 3.1.0
+.\build.ps1 -Version 4.0.0
 ```
 
-### 手动构建
+### 手动构建（依赖 .NET 8 Runtime，与 build.ps1 一致）
+```bash
+dotnet publish -c Release -p:PublishSingleFile=true --self-contained false -p:DebugType=none -p:DebugSymbols=false -o ./publish
+```
+
+### 自包含发布（无需目标机器安装 .NET Runtime）
 ```bash
 dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ./publish
 ```
