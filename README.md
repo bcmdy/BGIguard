@@ -4,6 +4,8 @@ BetterGI 进程守护程序
 
 **仓库地址**: https://github.com/bcmdy/BGIguard
 
+**优化建议**: [优化方案与修改简介](docs/OPTIMIZATION_PROPOSAL.md)
+
 ## 功能说明
 
 - 自动监控 BetterGI.exe 进程运行状态
