@@ -36,15 +36,16 @@ README 写明配置文件修改后无需重启即可生效，但 `LoadConfig()` 
 
 - `Program.cs` 的 `Main()`、`HandleCommandLine()`。
 
-### 3. `cmd.exe /c start` 启动方式存在参数转义风险
+### 3. 保留 `cmd.exe /c start` 启动方式，并加强参数过滤
 
 当前启动 BetterGI 使用 `cmd.exe /c start "" "BetterGI.exe" {args}`。这能让 BetterGI 独立运行，但参数包含特殊字符时可能出现转义问题，也增加了 shell 注入面。
 
 建议修改：
 
-- 优先使用 `ProcessStartInfo` 直接启动 BetterGI。
-- 如必须独立于守护进程，可设置 `UseShellExecute = true`，并明确 `WorkingDirectory = Path.GetDirectoryName(_betterGiExePath)`。
-- 将命令行参数保存为结构化参数列表，避免长期依赖字符串拼接。
+- 保留 `cmd.exe /c start` 启动方式，继续保证 BetterGI 独立于守护进程运行。
+- 在拼接参数前增加字符过滤或白名单校验，重点处理 `&`、`|`、`<`、`>`、`^`、`%`、换行等 cmd 特殊字符。
+- 对过滤后的参数记录日志，便于排查被清理的异常启动参数。
+- 暂不改动启动架构，先以低风险过滤策略降低转义问题。
 
 影响范围：
 
@@ -167,7 +168,7 @@ README 写明配置文件修改后无需重启即可生效，但 `LoadConfig()` 
 第二阶段处理运行可靠性：
 
 1. 用 SID 替换用户名比较，完善多用户隔离。
-2. 替换 `cmd.exe /c start` 字符串拼接启动方式。
+2. 保留 `cmd.exe /c start` 启动方式，增加启动参数字符过滤。
 3. 保留日志在 exe 目录，增强日志写入失败提示和文档说明。
 4. 释放 `Process` 对象并减少重复进程枚举。
 
