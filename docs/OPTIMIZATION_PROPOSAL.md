@@ -142,7 +142,7 @@ README 写明配置文件修改后无需重启即可生效，但 `LoadConfig()` 
 
 ### 10. 发布脚本和文档需统一
 
-README/SPEC 中的版本示例已统一到 `4.0.0`，并已区分默认依赖 .NET Runtime 的发布方式和自包含发布方式。后续还可以继续增强 `build.ps1` 的参数化能力。
+README/SPEC 中的版本示例已统一到当前版本，并已区分默认依赖 .NET Runtime 的发布方式和自包含发布方式。后续还可以继续增强 `build.ps1` 的参数化能力。
 
 建议修改：
 
@@ -195,7 +195,7 @@ dotnet test
 发布前执行：
 
 ```powershell
-.\build.ps1 -Version 4.0.0
+.\build.ps1 -Version 4.2.1
 ```
 
 并手动验证以下场景：

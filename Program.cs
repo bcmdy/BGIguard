@@ -38,7 +38,15 @@ class Program
     private static extern bool CloseHandle(IntPtr hObject);
 
     [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr LocalFree(IntPtr hMem);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);
+
+    [DllImport("shell32.dll", SetLastError = true)]
+    private static extern IntPtr CommandLineToArgvW(
+        [MarshalAs(UnmanagedType.LPWStr)] string lpCmdLine,
+        out int pNumArgs);
 
     // ============== P/Invoke API（进程所有者查询） ==============
     private const uint TOKEN_QUERY = 0x0008;
@@ -1399,65 +1407,188 @@ class Program
         if (string.IsNullOrWhiteSpace(fullCommandLine))
             return "";
 
-        // 策略：先找 .exe，再找参数
-        int exeIndex = fullCommandLine.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
-
-        if (exeIndex > 0)
+        var parsedArgs = SplitCommandLine(fullCommandLine);
+        if (parsedArgs.Count > 1)
         {
-            // 找到 .exe 后的第一个非空格字符
-            int argStart = exeIndex + 4; // 跳过 ".exe"
-
-            // 跳过空格
-            while (argStart < fullCommandLine.Length &&
-                   fullCommandLine[argStart] == ' ')
-            {
-                argStart++;
-            }
-
-            if (argStart < fullCommandLine.Length)
-            {
-                return CleanCommandArgs(fullCommandLine[argStart..]);
-            }
+            return string.Join(" ", parsedArgs.Skip(1).Select(QuoteArgumentIfNeeded));
         }
 
-        // 备用：找第一个空格（无 .exe 的情况）
-        int firstSpace = fullCommandLine.IndexOf(' ');
-        string rawArgs = firstSpace > 0 ? fullCommandLine[(firstSpace + 1)..] : "";
-        return CleanCommandArgs(rawArgs);
+        string commandLine = fullCommandLine.Trim();
+        int argStart = FindArgumentStart(commandLine);
+
+        if (argStart >= commandLine.Length)
+            return "";
+
+        return CleanCommandArgs(commandLine[argStart..]);
     }
 
+    /// <summary>
+    /// 使用 Windows 原生命令行解析规则拆分参数。
+    /// </summary>
+    private static List<string> SplitCommandLine(string commandLine)
+    {
+        var result = new List<string>();
+        IntPtr argv = IntPtr.Zero;
+
+        try
+        {
+            argv = CommandLineToArgvW(commandLine, out int argc);
+            if (argv == IntPtr.Zero || argc <= 0)
+                return result;
+
+            for (int i = 0; i < argc; i++)
+            {
+                IntPtr argPtr = Marshal.ReadIntPtr(argv, i * IntPtr.Size);
+                string? arg = Marshal.PtrToStringUni(argPtr);
+                if (arg != null)
+                    result.Add(arg);
+            }
+        }
+        finally
+        {
+            if (argv != IntPtr.Zero)
+                LocalFree(argv);
+        }
+
+        return result;
+    }
+
+    private static string QuoteArgumentIfNeeded(string arg)
+    {
+        if (arg.Length == 0)
+            return "\"\"";
+
+        bool needsQuotes = arg.Any(char.IsWhiteSpace) || arg.Contains('"');
+        if (!needsQuotes)
+            return arg;
+
+        var builder = new StringBuilder();
+        builder.Append('"');
+
+        int backslashCount = 0;
+        foreach (char c in arg)
+        {
+            if (c == '\\')
+            {
+                backslashCount++;
+                continue;
+            }
+
+            if (c == '"')
+            {
+                builder.Append('\\', backslashCount * 2 + 1);
+                builder.Append('"');
+                backslashCount = 0;
+                continue;
+            }
+
+            if (backslashCount > 0)
+            {
+                builder.Append('\\', backslashCount);
+                backslashCount = 0;
+            }
+
+            builder.Append(c);
+        }
+
+        if (backslashCount > 0)
+            builder.Append('\\', backslashCount * 2);
+
+        builder.Append('"');
+        return builder.ToString();
+    }
 
     /// <summary>
-    /// 彻底清理命令行参数，去除所有首尾引号和空格（包括不成对的单个引号）
+    /// 找到完整命令行中参数开始的位置，兼容带引号和不带引号的 exe 路径。
+    /// </summary>
+    private static int FindArgumentStart(string commandLine)
+    {
+        if (string.IsNullOrWhiteSpace(commandLine))
+            return 0;
+
+        int index;
+        if (commandLine[0] == '"')
+        {
+            int closingQuote = commandLine.IndexOf('"', 1);
+            index = closingQuote >= 0 ? closingQuote + 1 : commandLine.Length;
+        }
+        else
+        {
+            int exeIndex = commandLine.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+            index = exeIndex >= 0 ? exeIndex + 4 : commandLine.IndexOf(' ');
+            if (index < 0)
+                index = commandLine.Length;
+        }
+
+        while (index < commandLine.Length && char.IsWhiteSpace(commandLine[index]))
+            index++;
+
+        return index;
+    }
+
+    /// <summary>
+    /// 清理命令行参数，去除整体包裹引号，并规整逐参数引号格式。
     /// </summary>
     private static string CleanCommandArgs(string args)
     {
         if (string.IsNullOrWhiteSpace(args))
             return "";
 
-        // 循环去除所有首尾引号和空格
-        string cleaned = args;
-        bool changed;
-        do
+        string cleaned = args.Trim();
+        while (cleaned.Length >= 2 && cleaned[0] == '"' && cleaned[^1] == '"' && IsSingleQuotedArgument(cleaned))
         {
-            string before = cleaned;
-            cleaned = cleaned.Trim();
-
-            // 去除开头的单个引号（不管结尾有没有）
-            if (cleaned.StartsWith("\""))
-                cleaned = cleaned[1..];
-
-            // 去除结尾的单个引号（不管开头有没有）
-            if (cleaned.EndsWith("\""))
-                cleaned = cleaned[..^1];
-
-            changed = cleaned != before;
-        } while (changed && cleaned.Length > 0);
+            cleaned = cleaned[1..^1].Trim();
+        }
 
         // 如果清理后只剩下引号和空格，视为空参数
         if (string.IsNullOrWhiteSpace(cleaned.Replace("\"", "")))
             return "";
 
+        cleaned = NormalizeSeparatedQuotedArguments(cleaned);
         return cleaned;
+    }
+
+    private static bool IsSingleQuotedArgument(string value)
+    {
+        bool inQuotes = false;
+        for (int i = 0; i < value.Length; i++)
+        {
+            if (value[i] == '"')
+            {
+                inQuotes = !inQuotes;
+                continue;
+            }
+
+            if (!inQuotes && char.IsWhiteSpace(value[i]))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static string NormalizeSeparatedQuotedArguments(string args)
+    {
+        var builder = new StringBuilder(args.Length);
+        bool inQuotes = false;
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            char current = args[i];
+            if (current == '"')
+            {
+                bool previousIsBoundary = i == 0 || char.IsWhiteSpace(args[i - 1]);
+                bool nextIsBoundary = i == args.Length - 1 || char.IsWhiteSpace(args[i + 1]);
+
+                if (previousIsBoundary || nextIsBoundary)
+                {
+                    inQuotes = !inQuotes;
+                    continue;
+                }
+            }
+
+            builder.Append(current);
+        }
+
+        return builder.ToString().Trim();
     }
 }

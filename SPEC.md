@@ -179,12 +179,12 @@
 
 **日志示例**:
 ```
-[2026-05-15 14:30:00.123] [BGIguard_v4.0.0] [INFO] BGIguard 启动成功 (用户:Bcmdy)
-[2026-05-15 14:30:00.456] [BGIguard_v4.0.0] [INFO] BetterGI路径: D:\Games\BetterGI\BetterGI.exe
-[2026-05-15 14:30:05.789] [BGIguard_v4.0.0] [INFO] 检测 14:30:05 | 内存: 45% | BetterGI: 运行 | 游戏: YuanShen
-[2026-05-15 14:35:00.001] [BGIguard_v4.0.0] [WARN] BetterGI.exe 丢失 (第 1 次)
-[2026-05-15 14:35:10.123] [BGIguard_v4.0.0] [INFO] 连续丢失达到阈值，正在重启... (当前用户:DESKTOP\Bcmdy, SID:S-1-5-21-...)
-[2026-05-15 14:40:00.123] [BGIguard_v4.0.0] [INFO] 已终止 BetterGI.exe PID:1234 (用户:DESKTOP\Bcmdy, SID:S-1-5-21-...)
+[2026-05-15 14:30:00.123] [BGIguard_v4.2.1] [INFO] BGIguard 启动成功 (用户:Bcmdy)
+[2026-05-15 14:30:00.456] [BGIguard_v4.2.1] [INFO] BetterGI路径: D:\Games\BetterGI\BetterGI.exe
+[2026-05-15 14:30:05.789] [BGIguard_v4.2.1] [INFO] 检测 14:30:05 | 内存: 45% | BetterGI: 运行 | 游戏: YuanShen
+[2026-05-15 14:35:00.001] [BGIguard_v4.2.1] [WARN] BetterGI.exe 丢失 (第 1 次)
+[2026-05-15 14:35:10.123] [BGIguard_v4.2.1] [INFO] 连续丢失达到阈值，正在重启... (当前用户:DESKTOP\Bcmdy, SID:S-1-5-21-...)
+[2026-05-15 14:40:00.123] [BGIguard_v4.2.1] [INFO] 已终止 BetterGI.exe PID:1234 (用户:DESKTOP\Bcmdy, SID:S-1-5-21-...)
 ```
 
 ---
@@ -228,7 +228,7 @@ dotnet publish -c Release -p:PublishSingleFile=true --self-contained false -p:De
 
 或使用构建脚本:
 ```powershell
-.\build.ps1 -Version 4.0.0
+.\build.ps1 -Version 4.2.1
 ```
 
 自包含发布命令:
