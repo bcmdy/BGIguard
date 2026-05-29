@@ -142,7 +142,7 @@ README 写明配置文件修改后无需重启即可生效，但 `LoadConfig()` 
 
 ### 10. 发布脚本和文档需统一
 
-当前 `BGIguard.csproj` 版本是 `4.0.0`，但 README/SPEC 示例仍出现 `3.1.0`。README 手动发布命令写的是 `--self-contained true -r win-x64`，而 `build.ps1` 实际使用 `--self-contained false` 且未指定 RID。
+README/SPEC 中的版本示例已统一到 `4.0.0`，并已区分默认依赖 .NET Runtime 的发布方式和自包含发布方式。后续还可以继续增强 `build.ps1` 的参数化能力。
 
 建议修改：
 
@@ -165,7 +165,7 @@ README 写明配置文件修改后无需重启即可生效，但 `LoadConfig()` 
 3. 优化日志清理频率，避免每次写日志都扫描目录。
 4. 统一 README/SPEC/build 脚本中的版本号和发布模式说明。
 
-第二阶段处理运行可靠性：
+第二阶段处理运行可靠性（已完成）：
 
 1. 用 SID 替换用户名比较，完善多用户隔离。
 2. 保留 `cmd.exe /c start` 启动方式，增加启动参数字符过滤。
