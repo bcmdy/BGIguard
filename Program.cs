@@ -9,7 +9,7 @@ namespace BGIguard;
 /// <summary>
 /// BGIguard - BetterGI 守护程序
 /// </summary>
-class Program
+partial class Program
 {
     // ============== P/Invoke API ==============
     [DllImport("ntdll.dll")]
@@ -671,14 +671,17 @@ class Program
                 config = System.Text.Json.JsonSerializer.Deserialize<Config>(json) ?? new Config();
             }
             // 验证并修正
-            if (config.MemoryPercent <= 0 || config.MemoryPercent > 100)
-                config.MemoryPercent = 85;
-            if (config.MonitorInterval <= 0)
-                config.MonitorInterval = 5;
-            if (config.MissingCount <= 0 || config.MissingCount > 10)
-                config.MissingCount = 6;
-            if (config.BetterGiMemoryLimitMB < 0)
-                config.BetterGiMemoryLimitMB = 4096;
+            var normalized = ConfigService.Normalize(new RuntimeConfig(
+                config.BetterGiPath,
+                config.MemoryPercent,
+                config.MonitorInterval,
+                config.MissingCount,
+                config.SkipSetup,
+                config.BetterGiMemoryLimitMB));
+            config.MemoryPercent = normalized.MemoryPercent;
+            config.MonitorInterval = normalized.MonitorIntervalSeconds;
+            config.MissingCount = normalized.MissingCountThreshold;
+            config.BetterGiMemoryLimitMB = normalized.BetterGiMemoryLimitMB;
         }
         catch (Exception ex)
         {
@@ -1038,7 +1041,7 @@ class Program
 
                 // 3. 检查系统内存
                 var (totalMB, usedMB, physicalMB, virtualMB) = GetSystemMemory();
-                long memoryLimitMB = totalMB * _memoryPercent / 100;
+                long memoryLimitMB = ConfigService.CalculateMemoryLimitMB(totalMB, _memoryPercent);
                 int usedPercent = (int)(usedMB * 100 / Math.Max(1, totalMB));
 
                 // 4. 检查 BetterGI 进程自身内存（OOM 精准监控）
@@ -1064,7 +1067,7 @@ class Program
                 }
 
                 // ========== 进程级内存超限检查（精准 OOM 防护）==========
-                if (_betterGiMemoryLimitMB > 0 && betterGiRunning && betterGiMemMB > _betterGiMemoryLimitMB)
+                if (GuardDecision.ShouldRestartForProcessMemory(betterGiRunning, betterGiMemMB, _betterGiMemoryLimitMB))
                 {
                     Log("WARN", $"[进程内存超限] BetterGI 占用 {betterGiMemMB}MB > 阈值 {_betterGiMemoryLimitMB}MB，正在重启...");
                     TerminateBetterGiProcessByUser();
@@ -1082,7 +1085,7 @@ class Program
                     _missingCount++;
                     Log("WARN", $"BetterGI.exe 丢失 (第 {_missingCount} 次)");
 
-                    if (_missingCount >= _missingCountThreshold)
+                    if (GuardDecision.ShouldRestartForMissingProcess(betterGiRunning, _missingCount, _missingCountThreshold))
                     {
                         Log("INFO", "连续丢失达到阈值，正在重启...");
                         RestartBetterGiProcess();
@@ -1100,7 +1103,7 @@ class Program
                 }
 
                 // 系统内存超限时重启
-                if (usedMB > memoryLimitMB)
+                if (GuardDecision.ShouldRestartForSystemMemory(usedMB, memoryLimitMB))
                 {
                     Log("WARN", $"[系统内存超限] {usedMB}MB > {memoryLimitMB}MB ({_memoryPercent}%)");
                     TerminateBetterGiProcessByUser();
@@ -1115,7 +1118,7 @@ class Program
                     _gameExitCount++;
                     Log("WARN", $"游戏已退出 (第 {_gameExitCount} 次)");
 
-                    if (_gameExitCount >= _missingCountThreshold)
+                    if (GuardDecision.ShouldRestartForGameExit(gameRunning, betterGiRunning, _gameExitCount, _missingCountThreshold))
                     {
                         Log("INFO", $"游戏退出达到阈值，终止 BetterGI.exe (当前用户:{_currentUserName}, SID:{_currentUserSid})");
                         TerminateBetterGiProcessByUser();
@@ -1161,19 +1164,7 @@ class Program
     /// </summary>
     private static string FilterCmdArguments(string args)
     {
-        if (string.IsNullOrEmpty(args))
-            return "";
-
-        var builder = new StringBuilder(args.Length);
-        foreach (char c in args)
-        {
-            if (Array.IndexOf(DangerousCmdArgumentChars, c) >= 0)
-                continue;
-
-            builder.Append(c);
-        }
-
-        return builder.ToString().Trim();
+        return CommandLineArguments.FilterDangerousCmdArguments(args, DangerousCmdArgumentChars);
     }
 
     private static string FormatArgumentForLog(string args)
@@ -1404,22 +1395,7 @@ class Program
     /// </summary>
     private static string ExtractArgs(string fullCommandLine)
     {
-        if (string.IsNullOrWhiteSpace(fullCommandLine))
-            return "";
-
-        var parsedArgs = SplitCommandLine(fullCommandLine);
-        if (parsedArgs.Count > 1)
-        {
-            return string.Join(" ", parsedArgs.Skip(1).Select(QuoteArgumentIfNeeded));
-        }
-
-        string commandLine = fullCommandLine.Trim();
-        int argStart = FindArgumentStart(commandLine);
-
-        if (argStart >= commandLine.Length)
-            return "";
-
-        return CleanCommandArgs(commandLine[argStart..]);
+        return CommandLineArguments.ExtractArgs(fullCommandLine, SplitCommandLine);
     }
 
     /// <summary>
@@ -1455,47 +1431,7 @@ class Program
 
     private static string QuoteArgumentIfNeeded(string arg)
     {
-        if (arg.Length == 0)
-            return "\"\"";
-
-        bool needsQuotes = arg.Any(char.IsWhiteSpace) || arg.Contains('"');
-        if (!needsQuotes)
-            return arg;
-
-        var builder = new StringBuilder();
-        builder.Append('"');
-
-        int backslashCount = 0;
-        foreach (char c in arg)
-        {
-            if (c == '\\')
-            {
-                backslashCount++;
-                continue;
-            }
-
-            if (c == '"')
-            {
-                builder.Append('\\', backslashCount * 2 + 1);
-                builder.Append('"');
-                backslashCount = 0;
-                continue;
-            }
-
-            if (backslashCount > 0)
-            {
-                builder.Append('\\', backslashCount);
-                backslashCount = 0;
-            }
-
-            builder.Append(c);
-        }
-
-        if (backslashCount > 0)
-            builder.Append('\\', backslashCount * 2);
-
-        builder.Append('"');
-        return builder.ToString();
+        return CommandLineArguments.QuoteArgumentIfNeeded(arg);
     }
 
     /// <summary>
@@ -1503,27 +1439,7 @@ class Program
     /// </summary>
     private static int FindArgumentStart(string commandLine)
     {
-        if (string.IsNullOrWhiteSpace(commandLine))
-            return 0;
-
-        int index;
-        if (commandLine[0] == '"')
-        {
-            int closingQuote = commandLine.IndexOf('"', 1);
-            index = closingQuote >= 0 ? closingQuote + 1 : commandLine.Length;
-        }
-        else
-        {
-            int exeIndex = commandLine.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
-            index = exeIndex >= 0 ? exeIndex + 4 : commandLine.IndexOf(' ');
-            if (index < 0)
-                index = commandLine.Length;
-        }
-
-        while (index < commandLine.Length && char.IsWhiteSpace(commandLine[index]))
-            index++;
-
-        return index;
+        return CommandLineArguments.FindArgumentStart(commandLine);
     }
 
     /// <summary>

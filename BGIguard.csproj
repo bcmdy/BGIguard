@@ -15,7 +15,13 @@
 
   
   <ItemGroup>
+    <Compile Remove="BGIguard.Tests\**\*.cs" />
+    <None Remove="BGIguard.Tests\**\*" />
     <Resource Include="Assets\icon.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="BGIguard.Tests" />
   </ItemGroup>
 
 </Project>
