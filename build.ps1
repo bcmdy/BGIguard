@@ -1,6 +1,6 @@
 ﻿# BGIguard Build Script (PowerShell)
 param(
-    [string]$Version = "4.2.1",
+    [string]$Version = "5.0.0",
     [switch]$SelfContained,
     [string]$Runtime = "win-x64",
     [string]$OutputDir = "publish"

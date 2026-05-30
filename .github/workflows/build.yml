@@ -6,7 +6,7 @@ on:
       version:
         description: '版本号'
         required: false
-        default: '3.0.2'
+        default: '5.0.0'
         type: string
 
 jobs:
@@ -30,7 +30,7 @@ jobs:
 
       - name: Publish (self-contained, single file)
         run: |
-          dotnet publish BGIguard.csproj -c Release -p:PublishSingleFile=true --self-contained true -p:DebugType=none -p:DebugSymbols=false -p:Version=${{ github.event.inputs.version || '3.0.2' }} -p:AssemblyVersion=${{ github.event.inputs.version || '3.0.2' }} -p:FileVersion=${{ github.event.inputs.version || '3.0.2' }} -o ./publish -r win-x64
+          dotnet publish BGIguard.csproj -c Release -p:PublishSingleFile=true --self-contained true -p:DebugType=none -p:DebugSymbols=false -p:Version=${{ github.event.inputs.version || '5.0.0' }} -p:AssemblyVersion=${{ github.event.inputs.version || '5.0.0' }} -p:FileVersion=${{ github.event.inputs.version || '5.0.0' }} -o ./publish -r win-x64
 
       - name: Remove bin directory
         run: |
@@ -38,7 +38,7 @@ jobs:
 
       - name: Update version in project files
         run: |
-          $version = "${{ github.event.inputs.version || '2.2.2' }}"
+          $version = "${{ github.event.inputs.version || '5.0.0' }}"
           $versionMain = $version + ".0"
 
           # Update BGIguard.csproj
@@ -50,6 +50,6 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BGIguard-${{ github.event.inputs.version || '2.2.2' }}
+          name: BGIguard-${{ github.event.inputs.version || '5.0.0' }}
           path: publish/
           retention-days: 30

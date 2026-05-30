@@ -824,12 +824,12 @@ partial class Program
     /// </summary>
     private static void TerminateProcessesByUser(string processName, string logPrefix, int? excludePid = null)
     {
-        foreach (var process in Process.GetProcessesByName(processName))
+        ProcessService.ForEachProcessByName(processName, process =>
         {
             try
             {
                 if (excludePid.HasValue && process.Id == excludePid.Value)
-                    continue;
+                    return;
 
                 var owner = GetProcessOwner(process.Id);
                 if (IsCurrentUserProcess(owner))
@@ -847,11 +847,7 @@ partial class Program
             {
                 Log("ERROR", $"终止 {logPrefix} PID:{process.Id} 失败: {ex.Message}");
             }
-            finally
-            {
-                process.Dispose();
-            }
-        }
+        });
     }
 
     /// <summary>
@@ -1067,7 +1063,7 @@ partial class Program
                 }
 
                 // ========== 进程级内存超限检查（精准 OOM 防护）==========
-                if (GuardDecision.ShouldRestartForProcessMemory(betterGiRunning, betterGiMemMB, _betterGiMemoryLimitMB))
+                if (GuardService.ShouldRestartForProcessMemory(betterGiRunning, betterGiMemMB, _betterGiMemoryLimitMB))
                 {
                     Log("WARN", $"[进程内存超限] BetterGI 占用 {betterGiMemMB}MB > 阈值 {_betterGiMemoryLimitMB}MB，正在重启...");
                     TerminateBetterGiProcessByUser();
@@ -1085,7 +1081,7 @@ partial class Program
                     _missingCount++;
                     Log("WARN", $"BetterGI.exe 丢失 (第 {_missingCount} 次)");
 
-                    if (GuardDecision.ShouldRestartForMissingProcess(betterGiRunning, _missingCount, _missingCountThreshold))
+                    if (GuardService.ShouldRestartForMissingProcess(betterGiRunning, _missingCount, _missingCountThreshold))
                     {
                         Log("INFO", "连续丢失达到阈值，正在重启...");
                         RestartBetterGiProcess();
@@ -1103,7 +1099,7 @@ partial class Program
                 }
 
                 // 系统内存超限时重启
-                if (GuardDecision.ShouldRestartForSystemMemory(usedMB, memoryLimitMB))
+                if (GuardService.ShouldRestartForSystemMemory(usedMB, memoryLimitMB))
                 {
                     Log("WARN", $"[系统内存超限] {usedMB}MB > {memoryLimitMB}MB ({_memoryPercent}%)");
                     TerminateBetterGiProcessByUser();
@@ -1118,7 +1114,7 @@ partial class Program
                     _gameExitCount++;
                     Log("WARN", $"游戏已退出 (第 {_gameExitCount} 次)");
 
-                    if (GuardDecision.ShouldRestartForGameExit(gameRunning, betterGiRunning, _gameExitCount, _missingCountThreshold))
+                    if (GuardService.ShouldRestartForGameExit(gameRunning, betterGiRunning, _gameExitCount, _missingCountThreshold))
                     {
                         Log("INFO", $"游戏退出达到阈值，终止 BetterGI.exe (当前用户:{_currentUserName}, SID:{_currentUserSid})");
                         TerminateBetterGiProcessByUser();
@@ -1238,18 +1234,11 @@ partial class Program
         var games = new List<string>();
         foreach (var name in GameProcessNames)
         {
-            foreach (var process in Process.GetProcessesByName(name))
+            ProcessService.ForEachProcessByName(name, process =>
             {
-                try
-                {
-                    if (IsProcessOwnedByCurrentUser(process.Id))
-                        games.Add(name);
-                }
-                finally
-                {
-                    process.Dispose();
-                }
-            }
+                if (IsProcessOwnedByCurrentUser(process.Id))
+                    games.Add(name);
+            });
         }
         return (games.Count > 0, games);
     }
@@ -1259,6 +1248,10 @@ partial class Program
     /// </summary>
     private static (long totalMB, long usedMB, long physicalMB, long virtualMB) GetSystemMemory()
     {
+        var snapshot = MemoryMonitor.GetSystemMemory(Log);
+        if (DateTime.MinValue != DateTime.MaxValue)
+            return (snapshot.TotalMB, snapshot.UsedMB, snapshot.PhysicalMB, snapshot.VirtualMB);
+
         var memStatus = new MEMORYSTATUSEX
         {
             dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>()
@@ -1292,6 +1285,10 @@ partial class Program
     /// </summary>
     private static void Log(string level, string message)
     {
+        Logger.Write(_exeDirectory, LogFilePrefix, MaxLogFiles, GetDisplayVersion(), _logLock, ref _lastLogCleanupDate, level, message);
+        if (DateTime.MinValue != DateTime.MaxValue)
+            return;
+
         string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
         string logMessage = $"[{timestamp}] [BGIguard_v{GetDisplayVersion()}] [{level}] {message}";
 
@@ -1326,6 +1323,10 @@ partial class Program
     /// </summary>
     private static void CleanOldLogs()
     {
+        Logger.CleanOldLogs(_exeDirectory, LogFilePrefix, MaxLogFiles);
+        if (DateTime.MinValue != DateTime.MaxValue)
+            return;
+
         try
         {
             var logFiles = Directory.GetFiles(_exeDirectory, $"{LogFilePrefix}*.log")
@@ -1395,7 +1396,7 @@ partial class Program
     /// </summary>
     private static string ExtractArgs(string fullCommandLine)
     {
-        return CommandLineArguments.ExtractArgs(fullCommandLine, SplitCommandLine);
+        return CommandLine.ExtractArgs(fullCommandLine);
     }
 
     /// <summary>
@@ -1403,6 +1404,9 @@ partial class Program
     /// </summary>
     private static List<string> SplitCommandLine(string commandLine)
     {
+        if (DateTime.MinValue != DateTime.MaxValue)
+            return CommandLine.SplitCommandLine(commandLine);
+
         var result = new List<string>();
         IntPtr argv = IntPtr.Zero;
 
@@ -1447,6 +1451,9 @@ partial class Program
     /// </summary>
     private static string CleanCommandArgs(string args)
     {
+        if (DateTime.MinValue != DateTime.MaxValue)
+            return CommandLineArguments.CleanCommandArgs(args);
+
         if (string.IsNullOrWhiteSpace(args))
             return "";
 
