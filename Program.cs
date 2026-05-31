@@ -119,7 +119,7 @@ class Program
     {
         if (!DetectBetterGiPath())
         {
-            PromptForBetterGiPath();
+            _betterGiExePath = ConsoleUi.PromptForBetterGiPath();
         }
     }
 
@@ -150,31 +150,6 @@ class Program
         return true;
     }
 
-    private static void PromptForBetterGiPath()
-    {
-        Console.WriteLine("错误: 未找到 BetterGI.exe");
-        Console.WriteLine("请设置 BetterGI.exe 路径:");
-        Console.Write("> ");
-        string? pathInput = Console.ReadLine();
-        if (!string.IsNullOrEmpty(pathInput))
-        {
-            pathInput = pathInput.Trim().Trim('"');
-        }
-
-        PathValidationResult validation = PathService.ValidateExecutablePath(pathInput ?? "");
-        while (!validation.IsValid)
-        {
-            Console.WriteLine("文件不存在或不是有效的 .exe，请重新输入 BetterGI.exe 路径:");
-            Console.Write("> ");
-            pathInput = Console.ReadLine();
-            validation = PathService.ValidateExecutablePath(pathInput ?? "");
-        }
-
-        SaveConfigPath(validation.NormalizedPath);
-        _betterGiExePath = validation.NormalizedPath;
-        Console.WriteLine($"路径已设置为: {_betterGiExePath}");
-    }
-
     private static (string betterGiPath, int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup, int betterGiMemoryLimitMB) LoadConfig()
     {
         RuntimeConfig config = ConfigStore.Load();
@@ -184,11 +159,6 @@ class Program
     private static void ClearConfigCache()
     {
         ConfigStore.ClearCache();
-    }
-
-    private static void SaveConfigPath(string path)
-    {
-        ConfigStore.SavePath(path, out _);
     }
 
     private static void HandleSingleInstance()

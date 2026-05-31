@@ -161,10 +161,40 @@ internal sealed class ConsoleUiService
         Console.WriteLine();
     }
 
+    public string PromptForBetterGiPath()
+    {
+        Console.WriteLine("错误: 未找到 BetterGI.exe");
+        Console.WriteLine("请设置 BetterGI.exe 路径:");
+        Console.Write("> ");
+
+        PathValidationResult validation = ReadBetterGiPath();
+        while (!validation.IsValid)
+        {
+            Console.WriteLine("文件不存在或不是有效的 .exe，请重新输入 BetterGI.exe 路径:");
+            Console.Write("> ");
+            validation = ReadBetterGiPath();
+        }
+
+        _configStore.SavePath(validation.NormalizedPath, out _);
+        Console.WriteLine($"路径已设置为: {validation.NormalizedPath}");
+        return validation.NormalizedPath;
+    }
+
     private static void WriteConfigResult(CommandLineConfigResult result)
     {
         if (!string.IsNullOrEmpty(result.Message))
             Console.WriteLine(result.Message);
+    }
+
+    private static PathValidationResult ReadBetterGiPath()
+    {
+        string? pathInput = Console.ReadLine();
+        if (!string.IsNullOrEmpty(pathInput))
+        {
+            pathInput = pathInput.Trim().Trim('"');
+        }
+
+        return PathService.ValidateExecutablePath(pathInput ?? "");
     }
 
     private CommandLineConfigResult ShowHelpAndReturnEmpty()
