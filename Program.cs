@@ -3,18 +3,17 @@ using System.Reflection;
 namespace BGIguard;
 
 /// <summary>
-/// BGIguard - BetterGI 守护程序
+/// BGIguard - BetterGI 进程守护程序。
 /// </summary>
 class Program
 {
-
-    // ============== 配置常量 ==============
     private const int RestartDelayMs = 1000;
     private const int ProcessWaitExitMs = 3000;
     private const string BetterGiExeName = "BetterGI.exe";
+    private const int MaxLogFiles = 7;
+    private const string LogFilePrefix = "BGI_guard";
     private static readonly char[] DangerousCmdArgumentChars = { '&', '|', '<', '>', '^', '%', '\r', '\n' };
 
-    // ============== 全局变量 ==============
     private static string _exeDirectory = null!;
     private static string _betterGiExePath = "";
     private static string _cachedCommand = "";
@@ -22,47 +21,38 @@ class Program
     private static readonly string _version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "1.0";
     private static readonly string _currentUserSid = CurrentUserService.GetCurrentUserSid();
     private static readonly string _currentUserName = CurrentUserService.GetCurrentUserDisplayName();
-
-    // 游戏进程名
     private static readonly string[] GameProcessNames = { "YuanShen", "GenshinImpact" };
 
-    // 运行时配置
     private static int _monitorIntervalMs = 5000;
     private static int _memoryPercent = 95;
     private static int _missingCountThreshold = 3;
     private static bool _skipSetup = false;
     private static int _betterGiMemoryLimitMB = 4096;
 
-    // 获取显示版本
-    private static string GetDisplayVersion()
-    {
-        var ver = typeof(Program).Assembly.GetCustomAttribute<AssemblyFileVersionAttribute>();
-        return ver?.Version ?? _version;
-    }
+    private static AppLogger? _logger;
+    private static ConfigService? _configService;
+
+    private static AppLogger LoggerStore => _logger ??= new AppLogger(_exeDirectory, LogFilePrefix, MaxLogFiles, GetDisplayVersion);
+    private static string ConfigFilePath => Path.Combine(_exeDirectory, "BGIguard_config.json");
+    private static ConfigService ConfigStore => _configService ??= new ConfigService(ConfigFilePath, Log);
 
     static void Main(string[] args)
     {
         _exeDirectory = AppDomain.CurrentDomain.BaseDirectory;
 
-        // 设置控制台窗口标题
         string version = GetDisplayVersion();
         Console.Title = $"BetterGI 进程守护 v{version} By:Bcmdy";
 
-        // 先处理命令行参数，避免 help/reset/set show 等命令被 BetterGI 路径检测阻塞
+        // 先处理 help/reset/set show 等命令，避免被 BetterGI 路径检测阻塞。
         if (args.Length > 0)
         {
             HandleCommandLine(args);
             return;
         }
 
-        // 加载配置
-        var initConfig = LoadConfig();
-        ApplyRuntimeConfig(initConfig);
-
-        // 检测 BetterGI.exe 路径
+        ApplyRuntimeConfig(LoadConfig());
         EnsureBetterGiPath();
 
-        // 无参数启动时显示设置界面（除非已跳过）
         if (!_skipSetup)
         {
             ShowCommandLineSetup();
@@ -70,15 +60,12 @@ class Program
             EnsureBetterGiPath();
         }
 
-        // 记录启动日志
         Log("INFO", "BGIguard 启动成功");
-        Log("INFO", $"BetterGI路径: {_betterGiExePath}");
+        Log("INFO", $"BetterGI 路径: {_betterGiExePath}");
         Log("INFO", $"进程内存阈值: {(_betterGiMemoryLimitMB > 0 ? $"{_betterGiMemoryLimitMB}MB" : "已禁用")}");
 
-        // 处理单实例保护
         HandleSingleInstance();
 
-        // 检查 BetterGI 是否已运行，若已运行则不重复启动
         bool alreadyRunning = ProcessService.GetOwnedProcessSnapshot(
             BetterGiExeName.Replace(".exe", ""),
             _betterGiExePath,
@@ -87,9 +74,9 @@ class Program
             includeCommandLine: false,
             includeMemory: false,
             Log).Exists;
+
         if (!alreadyRunning)
         {
-            // 未运行，启动 BetterGI.exe
             StartBetterGiProcess();
         }
         else
@@ -97,8 +84,7 @@ class Program
             Log("INFO", "BetterGI.exe 已在运行中，跳过启动");
         }
 
-        // 启动后立即缓存启动命令
-        Thread.Sleep(500); // 等待进程启动
+        Thread.Sleep(500);
         var initialSnapshot = ProcessService.GetOwnedProcessSnapshot(
             BetterGiExeName.Replace(".exe", ""),
             _betterGiExePath,
@@ -107,30 +93,26 @@ class Program
             includeCommandLine: true,
             includeMemory: false,
             Log);
+
         if (initialSnapshot.Exists && initialSnapshot.CommandLine != null)
         {
             _cachedCommand = CommandLine.ExtractArgs(initialSnapshot.CommandLine);
             Log("INFO", $"已缓存启动命令: {_cachedCommand}");
         }
 
-        // 进入守护主循环
         RunGuardLoop();
     }
 
-    private const int MaxLogFiles = 7;
-    private const string LogFilePrefix = "BGI_guard";
-    private static AppLogger? _logger;
-    private static AppLogger LoggerStore => _logger ??= new AppLogger(_exeDirectory, LogFilePrefix, MaxLogFiles, GetDisplayVersion);
+    private static string GetDisplayVersion()
+    {
+        var ver = typeof(Program).Assembly.GetCustomAttribute<AssemblyFileVersionAttribute>();
+        return ver?.Version ?? _version;
+    }
 
     private static void Log(string level, string message)
     {
         LoggerStore.Write(level, message);
     }
-
-
-    private static string ConfigFilePath => Path.Combine(_exeDirectory, "BGIguard_config.json");
-    private static ConfigService? _configService;
-    private static ConfigService ConfigStore => _configService ??= new ConfigService(ConfigFilePath, Log);
 
     private static void EnsureBetterGiPath()
     {
@@ -177,6 +159,7 @@ class Program
         {
             pathInput = pathInput.Trim().Trim('"');
         }
+
         PathValidationResult validation = PathService.ValidateExecutablePath(pathInput ?? "");
         while (!validation.IsValid)
         {
@@ -185,6 +168,7 @@ class Program
             pathInput = Console.ReadLine();
             validation = PathService.ValidateExecutablePath(pathInput ?? "");
         }
+
         SaveConfigPath(validation.NormalizedPath);
         _betterGiExePath = validation.NormalizedPath;
         Console.WriteLine($"路径已设置为: {_betterGiExePath}");
@@ -199,11 +183,6 @@ class Program
     private static void ClearConfigCache()
     {
         ConfigStore.ClearCache();
-    }
-
-    private static void SaveConfig(int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup, int betterGiMemoryLimitMB)
-    {
-        ConfigStore.SaveSettings(memoryPercent, monitorIntervalSeconds, missingCountThreshold, skipSetup, betterGiMemoryLimitMB);
     }
 
     private static void SaveConfigPath(string path)
@@ -221,18 +200,6 @@ class Program
             Log);
     }
 
-    private static void TerminateBetterGiProcessByUser()
-    {
-        ProcessService.TerminateProcessesByCurrentUser(
-            BetterGiExeName.Replace(".exe", ""),
-            "BetterGI.exe",
-            excludePid: null,
-            ProcessWaitExitMs,
-            _currentUserSid,
-            _currentUserName,
-            Log);
-    }
-
     private static void StartBetterGiProcess(string? commandLine = null)
     {
         ProcessService.StartBetterGiProcess(
@@ -241,7 +208,6 @@ class Program
             DangerousCmdArgumentChars,
             Log);
     }
-
 
     private static void RunGuardLoop()
     {
@@ -315,9 +281,6 @@ class Program
             Log);
     }
 
-    /// <summary>
-    /// 处理命令行参数
-    /// </summary>
     private static void HandleCommandLine(string[] args)
     {
         string command = args[0].ToLower();
@@ -331,9 +294,7 @@ class Program
                 }
                 else if (args.Length >= 2)
                 {
-                    CommandLineConfigResult result = HandleSetCommand(args);
-                    if (!string.IsNullOrEmpty(result.Message))
-                        Console.WriteLine(result.Message);
+                    WriteConfigResult(HandleSetCommand(args));
                 }
                 else
                 {
@@ -355,16 +316,13 @@ class Program
                 }
                 else
                 {
-                    Console.WriteLine("配置已是默认值");
+                    Console.WriteLine("配置已经是默认值");
                 }
                 break;
 
             default:
-                // 正常运行模式
                 var config = LoadConfig();
                 ApplyRuntimeConfig(config);
-
-                // 检测 BetterGI 路径，未找到则强制要求设置
                 EnsureBetterGiPath();
 
                 Log("INFO", "BGIguard 启动成功");
@@ -375,9 +333,6 @@ class Program
         }
     }
 
-    /// <summary>
-    /// 显示帮助
-    /// </summary>
     private static CommandLineConfigResult HandleSetCommand(string[] args)
     {
         if (args.Length < 2)
@@ -432,17 +387,14 @@ class Program
         Console.WriteLine("  BGIguard.exe reset                 重置配置为默认值");
         Console.WriteLine("  BGIguard.exe help                  显示帮助");
         Console.WriteLine();
-        Console.WriteLine("默认值: 系统内存=85%, 监控间隔=5秒, 丢失计数=6次, 进程内存=4096MB, 跳过设置=否");
+        Console.WriteLine("默认值: 系统内存=85%, 监控间隔=5秒, 丢失计数=6次, 进程内存=4096MB, 跳过设置=false");
     }
 
-    /// <summary>
-    /// 显示当前配置
-    /// </summary>
     private static void ShowConfig()
     {
         var config = LoadConfig();
         Console.WriteLine("当前配置:");
-        Console.WriteLine($"  BetterGI路径: {config.betterGiPath}");
+        Console.WriteLine($"  BetterGI 路径: {config.betterGiPath}");
         Console.WriteLine($"  系统内存阈值: {config.memoryPercent}%");
         Console.WriteLine($"  监控间隔: {config.monitorIntervalSeconds} 秒");
         Console.WriteLine($"  丢失计数阈值: {config.missingCountThreshold} 次");
@@ -450,17 +402,14 @@ class Program
         Console.WriteLine($"  跳过设置: {config.skipSetup}");
     }
 
-    /// <summary>
-    /// 显示命令行设置界面
-    /// </summary>
     private static void ShowCommandLineSetup()
     {
         Console.WriteLine("=== BGIguard 设置 ===");
         Console.WriteLine();
 
         var config = LoadConfig();
-        Console.WriteLine($"当前配置:");
-        Console.WriteLine($"  BetterGI路径: {config.betterGiPath}");
+        Console.WriteLine("当前配置:");
+        Console.WriteLine($"  BetterGI 路径: {config.betterGiPath}");
         Console.WriteLine($"  系统内存阈值: {config.memoryPercent}%");
         Console.WriteLine($"  监控间隔: {config.monitorIntervalSeconds} 秒");
         Console.WriteLine($"  丢失计数阈值: {config.missingCountThreshold} 次");
@@ -469,13 +418,13 @@ class Program
 
         Console.WriteLine("请选择操作:");
         Console.WriteLine("  1. 修改 BetterGI 路径        (BetterGI.exe 完整路径)");
-        Console.WriteLine("  2. 修改系统内存阈值        (1-100%，超阈值重启)");
-        Console.WriteLine("  3. 修改监控间隔            (1-999秒，检测频率)");
-        Console.WriteLine("  4. 修改丢失计数阈值        (1-10次，连续退出触发重启)");
-        Console.WriteLine("  5. 修改进程内存阈值        (MB, 0=禁用, BetterGI独占内存超限重启)");
-        Console.WriteLine("  6. 启动守护进程            (进入守护监控模式)");
-        Console.WriteLine("  7. 跳过设置直接启动        (直接进入守护)");
-        Console.WriteLine("  8. 重置配置                (恢复默认设置)");
+        Console.WriteLine("  2. 修改系统内存阈值          (1-100%，超阈值重启)");
+        Console.WriteLine("  3. 修改监控间隔              (1-999 秒，检测频率)");
+        Console.WriteLine("  4. 修改丢失计数阈值          (1-10 次，连续退出触发重启)");
+        Console.WriteLine("  5. 修改进程内存阈值          (MB, 0=禁用)");
+        Console.WriteLine("  6. 启动守护进程              (进入守护监控模式)");
+        Console.WriteLine("  7. 跳过设置直接启动          (直接进入守护)");
+        Console.WriteLine("  8. 重置配置                  (恢复默认设置)");
         Console.WriteLine("  9. 退出");
         Console.WriteLine();
 

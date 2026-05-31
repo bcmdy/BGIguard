@@ -152,7 +152,7 @@ internal static class ProcessService
                 }
                 else if (owner.HasIdentity)
                 {
-                    log("WARN", $"{logPrefix} PID:{process.Id} 属于{owner.Display}，跳过终止");
+                    log("WARN", $"{logPrefix} PID:{process.Id} 属于 {owner.Display}，跳过终止");
                 }
             }
             catch (Exception ex)
@@ -175,7 +175,7 @@ internal static class ProcessService
             };
 
             using var startedProcess = Process.Start(startInfo);
-            log("INFO", $"已启动 BetterGI.exe" + (string.IsNullOrEmpty(commandArgs) ? "" : $" (参数: {commandArgs})"));
+            log("INFO", "已启动 BetterGI.exe" + (string.IsNullOrEmpty(commandArgs) ? "" : $" (参数: {commandArgs})"));
             return true;
         }
         catch (Exception ex)

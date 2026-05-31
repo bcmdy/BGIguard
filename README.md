@@ -1,81 +1,63 @@
 # BGIguard
 
-BetterGI 进程守护程序
+BetterGI 进程守护程序。
 
-**仓库地址**: https://github.com/bcmdy/BGIguard
+仓库地址: https://github.com/bcmdy/BGIguard
 
-**优化建议**: [优化方案与修改简介](docs/OPTIMIZATION_PROPOSAL.md)
+优化与拆分记录:
 
-## 功能说明
+- [优化方案](docs/OPTIMIZATION_PROPOSAL.md)
+- [Program 代码下沉长任务](docs/PROGRAM_DOWNSHIFT_LONG_TASK.md)
 
-- 自动监控 BetterGI.exe 进程运行状态
-- 进程退出时自动重启（使用 cmd /c start 独立窗口，并过滤启动参数中的 cmd 特殊字符）
-- 系统内存（物理+虚拟）监控，内存超阈值自动重启
-- 游戏进程联动：检测 YuanShen.exe / GenshinImpact.exe
-- **多用户支持**：进程检查与终止按 SID 隔离，只操作当前用户的进程
-- 单实例保护：防止多开
-- 配置文件使用 JSON 格式（UTF8 编码）
-- 日志按日轮转，自动清理旧日志
-- 支持带引号的路径输入（如 `"D:\YS\BetterGI\BetterGI.exe"`）
+## 功能
+
+- 自动监控 `BetterGI.exe` 进程运行状态。
+- 进程退出时自动重启，启动方式保留 `cmd /c start`，并过滤启动参数中的高风险 cmd 字符。
+- 监控系统内存占用，超过阈值时重启 BetterGI。
+- 监控 BetterGI 进程独占内存，超过阈值时重启 BetterGI。
+- 检测 `YuanShen.exe` / `GenshinImpact.exe` 游戏进程。
+- 按当前用户 SID 隔离进程检查和终止，避免影响其他用户。
+- 单实例保护，防止重复运行守护进程。
+- JSON 配置文件支持运行时热加载。
+- 日志按日滚动，并自动清理旧日志。
 
 ## 使用方法
 
-### 启动守护进程
+直接运行：
 
-直接运行 `BGIguard.exe`，首次会提示设置 BetterGI.exe 路径
-
-### 配置命令
-
-```bash
-BGIguard.exe set path <路径>     # 设置 BetterGI.exe 路径
-BGIguard.exe set memory <值>    # 设置系统内存阈值 (1-100)
-BGIguard.exe set memlimit <值>   # 设置进程内存阈值 MB (0=禁用)
-BGIguard.exe set interval <值>  # 设置监控间隔 (秒)
-BGIguard.exe set count <值>     # 设置丢失计数阈值 (1-10)
-BGIguard.exe set skip           # 切换跳过设置界面
-BGIguard.exe set show           # 显示当前配置
-BGIguard.exe reset              # 重置配置
-BGIguard.exe help               # 显示帮助
+```powershell
+BGIguard.exe
 ```
 
-### 默认配置
+首次运行时会提示设置 `BetterGI.exe` 路径。
 
-| 配置项 | 默认值 | 取值范围 | 说明 |
-|--------|--------|----------|------|
-| 系统内存阈值 | 85% | 1-100% | 物理+虚拟内存占用百分比，超阈值重启 BetterGI |
-| 进程内存阈值 | 4096MB | >=0 MB | BetterGI 进程独占内存，0=禁用 |
-| 监控间隔 | 5秒 | 1-999秒 | 守护循环检测间隔 |
-| 丢失计数阈值 | 6次 | 1-10次 | 连续检测丢失进程次数才触发重启 |
-| 跳过设置 | false | true/false | 每次启动是否跳过设置界面 |
+## 命令行
 
-### 配置文件说明
+```powershell
+BGIguard.exe set path <路径>       # 设置 BetterGI.exe 路径
+BGIguard.exe set memory <值>       # 设置系统内存阈值 (1-100)
+BGIguard.exe set memlimit <值>     # 设置进程内存阈值 MB (0=禁用)
+BGIguard.exe set interval <值>     # 设置监控间隔 (秒)
+BGIguard.exe set count <值>        # 设置丢失计数阈值 (1-10)
+BGIguard.exe set skip              # 切换是否跳过设置界面
+BGIguard.exe set show              # 显示当前配置
+BGIguard.exe reset                 # 重置配置
+BGIguard.exe help                  # 显示帮助
+```
 
-**BetterGiPath**: BetterGI.exe 完整路径
-- 示例: `D:\Games\BetterGI\BetterGI.exe`
-- 支持带引号输入
+## 默认配置
 
-**MemoryPercent**: 系统内存阈值
-- 系统总内存（物理+虚拟内存）占用百分比
-- 超过此值时自动终止并重启 BetterGI
+| 配置项 | 默认值 | 范围 | 说明 |
+| --- | --- | --- | --- |
+| 系统内存阈值 | 85% | 1-100% | 系统内存占用超过阈值时重启 BetterGI |
+| 进程内存阈值 | 4096MB | >=0 MB | BetterGI 独占内存阈值，0 表示禁用 |
+| 监控间隔 | 5 秒 | >0 秒 | 守护循环检测间隔 |
+| 丢失计数阈值 | 6 次 | 1-10 次 | 连续检测到进程丢失多少次后触发重启 |
+| 跳过设置 | false | true/false | 是否跳过启动时设置菜单 |
 
-**BetterGiMemoryLimitMB**: 进程内存阈值
-- BetterGI 进程独占内存（MB），通过 PrivateMemorySize64 获取
-- 超过此值时立即重启 BetterGI，提供精准 OOM 防护
-- 设置为 0 表示禁用进程级内存监控
+## 配置文件
 
-**MonitorInterval**: 监控间隔（秒）
-- 守护循环检测频率
-- 值越小检测越频繁，性能开销略增
-
-**MissingCount**: 丢失计数阈值
-- 连续检测到 BetterGI/游戏 退出次数达到此值才触发重启
-- 避免短暂退出误触发
-
-**SkipSetup**: 跳过设置
-- `true`: 启动时直接进入守护模式
-- `false`: 启动时显示设置菜单
-
-首次运行后会自动生成 `BGIguard_config.json`（UTF8 编码）：
+配置文件保存为程序同目录下的 `BGIguard_config.json`：
 
 ```json
 {
@@ -88,73 +70,35 @@ BGIguard.exe help               # 显示帮助
 }
 ```
 
-> 注意: 修改配置文件后立即生效，无需重启
+程序会检测配置文件更新时间，运行中手动修改配置后会在后续监控循环中生效。
 
-## 日志说明
+## 日志
 
-每次检测输出简洁日志：
-```
-[2026-04-24 14:30:05.123] [BGIguard_v5.0.0] [INFO] 检测 14:30:05 | 内存: 45% | BetterGI: 运行 | 游戏: YuanShen
-```
+日志保存在程序同目录，文件名格式：
 
-内存警告（ >= 配置值-5% ）：
-```
-[2026-04-24 14:35:00.123] [BGIguard_v5.0.0] [WARN] [内存警告] 已用: 32768MB/49152MB (67%) | 物理: 16384MB | 虚拟: 32768MB
+```text
+BGI_guardYYYYMMDD.log
 ```
 
-进程终止日志（含用户信息和 SID）：
-```
-[2026-04-24 14:40:00.123] [BGIguard_v5.0.0] [INFO] 已终止 BetterGI.exe PID:1234 (用户:DESKTOP\Bcmdy, SID:S-1-5-21-...)
-[2026-04-24 14:40:00.456] [BGIguard_v5.0.0] [WARN] BetterGI.exe PID:5678 属于用户:DESKTOP\Admin, SID:S-1-5-21-...，跳过终止
-```
+默认保留最近 7 个日志文件。请避免把程序放在 `Program Files` 等普通用户无写入权限的目录中，否则日志和配置文件可能写入失败。
 
-日志文件：`BGI_guardYYYYMMDD.log`（UTF8 编码，按日生成，位于 exe 同目录）。请确保程序所在目录具有写入权限，避免放在 `Program Files` 等受保护目录。
+## 构建
 
-## 多用户说明
+需要 .NET 8 SDK。
 
-BGIguard 支持多用户环境，所有进程相关操作都会按用户隔离：
-
-- **进程检查**：只检测当前用户 SID 启动的 BetterGI 和游戏进程
-- **进程终止**：只终止当前用户 SID 启动的进程，避免影响其他用户
-- **日志记录**：终止日志会显示被终止进程的所属用户名和 SID
-
-这确保了在共享电脑或多用户环境下，每个用户的守护进程独立运行，互不干扰。
-
-## 技术要求
-
-- .NET 8.0 Runtime（或使用自包含发布版）
-- Windows 10/11
-
-## 项目结构
-
-```
-BGIguard/
-├── BGIguard.csproj
-├── Program.cs
-├── SPEC.md              # 需求规格文档
-├── CHANGELOG.md         # 更新日志
-├── README.md            # 说明文档
-├── build.ps1            # 构建脚本
-└── Assets/icon.ico      # 程序图标
+```powershell
+dotnet build BGIguard.sln -c Release
+dotnet test BGIguard.sln -c Release --no-build
 ```
 
-## 构建发布
+发布：
 
-### PowerShell 脚本
 ```powershell
 .\build.ps1 -Version 5.0.0
 ```
 
-### 手动构建（依赖 .NET 8 Runtime，与 build.ps1 一致）
-```bash
-dotnet publish -c Release -p:PublishSingleFile=true --self-contained false -p:DebugType=none -p:DebugSymbols=false -o ./publish
+自包含发布：
+
+```powershell
+.\build.ps1 -Version 5.0.0 -SelfContained -Runtime win-x64
 ```
-
-### 自包含发布（无需目标机器安装 .NET Runtime）
-```bash
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ./publish
-```
-
----
-
-By: Bcmdy

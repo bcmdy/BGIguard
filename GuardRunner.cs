@@ -155,7 +155,6 @@ internal sealed class GuardRunner
             _state.GameExitCount = 0;
         }
     }
-
 }
 
 internal sealed class GuardRuntimeState
