@@ -44,6 +44,10 @@
 - [x] 已通过 `dotnet build BGIguard.sln -c Release`。
 - [x] 已通过 `dotnet test BGIguard.sln -c Release --no-build`。
 
+## 结构审计结果
+
+当前仓库执行 `rg --files -g "Program*.cs"` 只应返回 `Program.cs`。如果后续重新出现 `Program.*.cs` 文件，应优先判断其中逻辑是否可以进入已有 service；只有无法自然下沉的入口编排或控制台输入输出才允许回到 `Program.cs`。
+
 ## 后续优化建议
 
 这些项目不是当前下沉目标的阻塞项，但可以继续改进：
