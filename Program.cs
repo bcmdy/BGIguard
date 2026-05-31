@@ -106,7 +106,14 @@ partial class Program
         HandleSingleInstance();
 
         // 检查 BetterGI 是否已运行，若已运行则不重复启动
-        bool alreadyRunning = IsBetterGiRunningByUser();
+        bool alreadyRunning = ProcessService.GetOwnedProcessSnapshot(
+            BetterGiExeName.Replace(".exe", ""),
+            _betterGiExePath,
+            _currentUserSid,
+            _currentUserName,
+            includeCommandLine: false,
+            includeMemory: false,
+            Log).Exists;
         if (!alreadyRunning)
         {
             // 未运行，启动 BetterGI.exe

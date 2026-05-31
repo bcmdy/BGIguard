@@ -12,8 +12,4 @@ partial class Program
         Logger.Write(_exeDirectory, LogFilePrefix, MaxLogFiles, GetDisplayVersion(), _logLock, ref _lastLogCleanupDate, level, message);
     }
 
-    private static void CleanOldLogs()
-    {
-        Logger.CleanOldLogs(_exeDirectory, LogFilePrefix, MaxLogFiles);
-    }
 }

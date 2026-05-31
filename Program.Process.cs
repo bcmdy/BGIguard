@@ -33,22 +33,4 @@ partial class Program
             Log);
     }
 
-    private static bool IsBetterGiRunningByUser()
-    {
-        return ProcessService.GetOwnedProcessSnapshot(
-            BetterGiExeName.Replace(".exe", ""),
-            _betterGiExePath,
-            _currentUserSid,
-            _currentUserName,
-            includeCommandLine: false,
-            includeMemory: false,
-            Log).Exists;
-    }
-
-    private static void RestartBetterGiProcess()
-    {
-        TerminateBetterGiProcessByUser();
-        Thread.Sleep(RestartDelayMs);
-        StartBetterGiProcess(_cachedCommand);
-    }
 }

@@ -2,6 +2,18 @@ namespace BGIguard;
 
 internal static class PathService
 {
+    public static string ResolveBetterGiPath(string baseDirectory, string exeName, string configuredPath)
+    {
+        string localPath = Path.Combine(baseDirectory, exeName);
+        if (File.Exists(localPath))
+            return localPath;
+
+        if (!string.IsNullOrWhiteSpace(configuredPath) && File.Exists(configuredPath))
+            return configuredPath;
+
+        return "";
+    }
+
     public static PathValidationResult ValidateExecutablePath(string path)
     {
         string normalizedPath = path.Trim().Trim('"');

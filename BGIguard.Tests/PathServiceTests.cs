@@ -40,4 +40,46 @@ public sealed class PathServiceTests
             File.Delete(tempFile);
         }
     }
+
+    [Fact]
+    public void ResolveBetterGiPath_PrefersLocalExecutable()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "BGIguard.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        string localPath = Path.Combine(tempDir, "BetterGI.exe");
+        string configuredPath = Path.Combine(tempDir, "Configured.exe");
+        File.WriteAllText(localPath, "");
+        File.WriteAllText(configuredPath, "");
+
+        try
+        {
+            string resolved = PathService.ResolveBetterGiPath(tempDir, "BetterGI.exe", configuredPath);
+
+            Assert.Equal(localPath, resolved);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ResolveBetterGiPath_FallsBackToConfiguredPath()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "BGIguard.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        string configuredPath = Path.Combine(tempDir, "Configured.exe");
+        File.WriteAllText(configuredPath, "");
+
+        try
+        {
+            string resolved = PathService.ResolveBetterGiPath(tempDir, "BetterGI.exe", configuredPath);
+
+            Assert.Equal(configuredPath, resolved);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
 }

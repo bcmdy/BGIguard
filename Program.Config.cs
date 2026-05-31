@@ -32,21 +32,13 @@ partial class Program
 
     private static bool DetectBetterGiPath()
     {
-        string localPath = Path.Combine(_exeDirectory, BetterGiExeName);
-        if (File.Exists(localPath))
-        {
-            _betterGiExePath = localPath;
-            return true;
-        }
-
         var config = LoadConfig();
-        if (!string.IsNullOrEmpty(config.betterGiPath) && File.Exists(config.betterGiPath))
-        {
-            _betterGiExePath = config.betterGiPath;
-            return true;
-        }
+        string resolvedPath = PathService.ResolveBetterGiPath(_exeDirectory, BetterGiExeName, config.betterGiPath);
+        if (string.IsNullOrEmpty(resolvedPath))
+            return false;
 
-        return false;
+        _betterGiExePath = resolvedPath;
+        return true;
     }
 
     private static void PromptForBetterGiPath()
@@ -59,14 +51,16 @@ partial class Program
         {
             pathInput = pathInput.Trim().Trim('"');
         }
-        while (string.IsNullOrWhiteSpace(pathInput) || !File.Exists(pathInput))
+        PathValidationResult validation = PathService.ValidateExecutablePath(pathInput ?? "");
+        while (!validation.IsValid)
         {
-            Console.WriteLine("文件不存在，请重新输入 BetterGI.exe 路径:");
+            Console.WriteLine("文件不存在或不是有效的 .exe，请重新输入 BetterGI.exe 路径:");
             Console.Write("> ");
             pathInput = Console.ReadLine();
+            validation = PathService.ValidateExecutablePath(pathInput ?? "");
         }
-        SaveConfigPath(pathInput);
-        _betterGiExePath = pathInput;
+        SaveConfigPath(validation.NormalizedPath);
+        _betterGiExePath = validation.NormalizedPath;
         Console.WriteLine($"路径已设置为: {_betterGiExePath}");
     }
 

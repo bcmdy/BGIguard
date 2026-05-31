@@ -44,7 +44,11 @@ partial class Program
                 var (gameRunning, gameProcesses) = ProcessService.GetRunningOwnedProcesses(GameProcessNames, _currentUserSid, _currentUserName);
 
                 // 3. 检查系统内存
-                var (totalMB, usedMB, physicalMB, virtualMB) = GetSystemMemory();
+                var memorySnapshot = MemoryMonitor.GetSystemMemory(Log);
+                long totalMB = memorySnapshot.TotalMB;
+                long usedMB = memorySnapshot.UsedMB;
+                long physicalMB = memorySnapshot.PhysicalMB;
+                long virtualMB = memorySnapshot.VirtualMB;
                 long memoryLimitMB = ConfigService.CalculateMemoryLimitMB(totalMB, _memoryPercent);
                 int usedPercent = (int)(usedMB * 100 / Math.Max(1, totalMB));
 
@@ -92,7 +96,9 @@ partial class Program
                     if (GuardService.ShouldRestartForMissingProcess(betterGiRunning, _missingCount, _missingCountThreshold))
                     {
                         Log("INFO", "连续丢失达到阈值，正在重启...");
-                        RestartBetterGiProcess();
+                        TerminateBetterGiProcessByUser();
+                        Thread.Sleep(RestartDelayMs);
+                        StartBetterGiProcess(_cachedCommand);
                         _missingCount = 0;
                     }
                 }
