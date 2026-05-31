@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Security.Principal;
 using System.Text;
 
 namespace BGIguard;
@@ -67,89 +66,14 @@ partial class Program
         TerminateProcessesByUser(currentProcessName, "旧守护进程", Environment.ProcessId);
     }
 
-    /// <summary>
-    /// 获取进程所有者（P/Invoke 方式，替代 WMI）
-    /// 性能：WMI 单次约 200-500ms，P/Invoke 单次约 1-3ms
-    /// </summary>
     private static ProcessOwnerInfo GetProcessOwner(int processId)
     {
-        IntPtr hProcess = IntPtr.Zero;
-        IntPtr hToken = IntPtr.Zero;
-        IntPtr tokenInfo = IntPtr.Zero;
-
-        try
-        {
-            // 打开目标进程（只需查询信息权限，无需 VM_READ）
-            hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, false, processId);
-            if (hProcess == IntPtr.Zero)
-            {
-                // 权限不足时回退到有限查询权限
-                hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
-                if (hProcess == IntPtr.Zero)
-                    return default;
-            }
-
-            // 打开进程的访问令牌
-            if (!OpenProcessToken(hProcess, TOKEN_QUERY, out hToken))
-                return default;
-
-            // 第一次调用：获取所需缓冲区大小
-            int returnLength = 0;
-            GetTokenInformation(hToken, TokenUser, IntPtr.Zero, 0, out returnLength);
-            if (returnLength == 0)
-                return default;
-
-            // 分配非托管内存并获取 TOKEN_USER
-            tokenInfo = Marshal.AllocHGlobal(returnLength);
-            if (!GetTokenInformation(hToken, TokenUser, tokenInfo, returnLength, out returnLength))
-                return default;
-
-            var tokenUser = Marshal.PtrToStructure<TOKEN_USER>(tokenInfo);
-            if (tokenUser.User.Sid == IntPtr.Zero)
-                return default;
-
-            string sid = new SecurityIdentifier(tokenUser.User.Sid).Value;
-
-            // 获取所需缓冲区大小
-            int nameSize = 0, domainSize = 0;
-            if (!LookupAccountSid(null, tokenUser.User.Sid, null!, ref nameSize, null!, ref domainSize, out _))
-            {
-                if (nameSize == 0) return new ProcessOwnerInfo("", sid);
-            }
-
-            var nameBuilder = new StringBuilder(nameSize);
-            var domainBuilder = new StringBuilder(Math.Max(1, domainSize));
-            if (!LookupAccountSid(null, tokenUser.User.Sid, nameBuilder, ref nameSize, domainBuilder, ref domainSize, out _))
-                return new ProcessOwnerInfo("", sid);
-
-            string name = nameBuilder.ToString();
-            string domain = domainBuilder.ToString();
-            string displayName = string.IsNullOrEmpty(domain) ? name : $@"{domain}\{name}";
-            return new ProcessOwnerInfo(displayName, sid);
-        }
-        catch
-        {
-            // 静默失败：权限不足或进程已退出是正常情况，避免日志风暴
-            return default;
-        }
-        finally
-        {
-            if (tokenInfo != IntPtr.Zero)
-                Marshal.FreeHGlobal(tokenInfo);
-            if (hToken != IntPtr.Zero)
-                CloseHandle(hToken);
-            if (hProcess != IntPtr.Zero)
-                CloseHandle(hProcess);
-        }
+        return ProcessService.GetProcessOwner(processId);
     }
 
     private static bool IsCurrentUserProcess(ProcessOwnerInfo owner)
     {
-        if (string.IsNullOrEmpty(_currentUserSid))
-            return string.Equals(owner.UserName, _currentUserName, StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(owner.UserName, Environment.UserName, StringComparison.OrdinalIgnoreCase);
-
-        return string.Equals(owner.Sid, _currentUserSid, StringComparison.OrdinalIgnoreCase);
+        return ProcessService.IsCurrentUserProcess(owner, _currentUserSid, _currentUserName);
     }
 
     /// <summary>
