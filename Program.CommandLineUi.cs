@@ -91,6 +91,12 @@ partial class Program
         };
     }
 
+    private static void WriteConfigResult(CommandLineConfigResult result)
+    {
+        if (!string.IsNullOrEmpty(result.Message))
+            Console.WriteLine(result.Message);
+    }
+
     private static CommandLineConfigResult ShowHelpAndReturnEmpty()
     {
         ShowHelp();
@@ -167,72 +173,34 @@ partial class Program
         {
             case "1":
                 Console.Write("请输入 BetterGI.exe 路径（或拖入文件，可带引号）: ");
-                string? pathInput = Console.ReadLine();
-                if (!string.IsNullOrEmpty(pathInput))
-                {
-                    pathInput = pathInput.Trim().Trim('"');
-                }
-                if (!string.IsNullOrWhiteSpace(pathInput) && File.Exists(pathInput))
-                {
-                    SaveConfigPath(pathInput);
-                    Console.WriteLine($"路径已设置为: {pathInput}");
-                }
-                else
-                {
-                    Console.WriteLine("文件不存在，保留原值");
-                }
+                WriteConfigResult(CommandLineConfigService.SetPath(ConfigStore, Console.ReadLine() ?? ""));
                 break;
 
             case "2":
                 Console.Write("请输入系统内存阈值 (1-100): ");
-                if (int.TryParse(Console.ReadLine(), out int mem) && mem > 0 && mem <= 100)
-                {
-                    var cfg2 = LoadConfig();
-                    SaveConfig(mem, cfg2.monitorIntervalSeconds, cfg2.missingCountThreshold, cfg2.skipSetup, cfg2.betterGiMemoryLimitMB);
-                    Console.WriteLine($"系统内存阈值已设置为 {mem}%");
-                }
+                WriteConfigResult(CommandLineConfigService.SetMemory(ConfigStore, Console.ReadLine() ?? ""));
                 break;
 
             case "3":
                 Console.Write("请输入监控间隔 (秒): ");
-                if (int.TryParse(Console.ReadLine(), out int interval) && interval > 0)
-                {
-                    var cfg3 = LoadConfig();
-                    SaveConfig(cfg3.memoryPercent, interval, cfg3.missingCountThreshold, cfg3.skipSetup, cfg3.betterGiMemoryLimitMB);
-                    Console.WriteLine($"监控间隔已设置为 {interval} 秒");
-                }
+                WriteConfigResult(CommandLineConfigService.SetInterval(ConfigStore, Console.ReadLine() ?? ""));
                 break;
 
             case "4":
                 Console.Write("请输入丢失计数阈值 (1-10): ");
-                if (int.TryParse(Console.ReadLine(), out int count) && count > 0 && count <= 10)
-                {
-                    var cfg4 = LoadConfig();
-                    SaveConfig(cfg4.memoryPercent, cfg4.monitorIntervalSeconds, count, cfg4.skipSetup, cfg4.betterGiMemoryLimitMB);
-                    Console.WriteLine($"丢失计数阈值已设置为 {count} 次");
-                }
+                WriteConfigResult(CommandLineConfigService.SetMissingCount(ConfigStore, Console.ReadLine() ?? ""));
                 break;
 
             case "5":
                 Console.Write("请输入进程内存阈值 (MB, 0=禁用): ");
-                if (int.TryParse(Console.ReadLine(), out int limit) && limit >= 0)
-                {
-                    var cfg5 = LoadConfig();
-                    SaveConfig(cfg5.memoryPercent, cfg5.monitorIntervalSeconds, cfg5.missingCountThreshold, cfg5.skipSetup, limit);
-                    if (limit == 0)
-                        Console.WriteLine("进程内存监控已禁用");
-                    else
-                        Console.WriteLine($"进程内存阈值已设置为 {limit}MB");
-                }
+                WriteConfigResult(CommandLineConfigService.SetProcessMemoryLimit(ConfigStore, Console.ReadLine() ?? ""));
                 break;
 
             case "6":
                 break;
 
             case "7":
-                var cfg7 = LoadConfig();
-                SaveConfig(cfg7.memoryPercent, cfg7.monitorIntervalSeconds, cfg7.missingCountThreshold, true, cfg7.betterGiMemoryLimitMB);
-                Console.WriteLine("已设置跳过设置界面");
+                WriteConfigResult(CommandLineConfigService.SetSkipSetup(ConfigStore, true));
                 break;
 
             case "8":

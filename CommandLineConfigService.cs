@@ -44,6 +44,13 @@ internal static class CommandLineConfigService
     {
         RuntimeConfig config = configStore.Load();
         bool newSkip = !config.SkipSetup;
+        return SetSkipSetup(configStore, newSkip);
+    }
+
+    public static CommandLineConfigResult SetSkipSetup(ConfigService configStore, bool skipSetup)
+    {
+        RuntimeConfig config = configStore.Load();
+        bool newSkip = skipSetup;
         configStore.SaveSettings(config.MemoryPercent, config.MonitorIntervalSeconds, config.MissingCountThreshold, newSkip, config.BetterGiMemoryLimitMB);
         return CommandLineConfigResult.Success($"跳过设置界面已设置为: {newSkip}");
     }
