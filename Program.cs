@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Security.Principal;
 
 namespace BGIguard;
 
@@ -21,8 +20,8 @@ partial class Program
     private static string _cachedCommand = "";
     private static Mutex? _mutex;
     private static readonly string _version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "1.0";
-    private static readonly string _currentUserSid = GetCurrentUserSid();
-    private static readonly string _currentUserName = GetCurrentUserDisplayName();
+    private static readonly string _currentUserSid = CurrentUserService.GetCurrentUserSid();
+    private static readonly string _currentUserName = CurrentUserService.GetCurrentUserDisplayName();
 
     // 游戏进程名
     private static readonly string[] GameProcessNames = { "YuanShen", "GenshinImpact" };
@@ -46,25 +45,6 @@ partial class Program
     {
         var ver = typeof(Program).Assembly.GetCustomAttribute<AssemblyFileVersionAttribute>();
         return ver?.Version ?? _version;
-    }
-
-    private static string GetCurrentUserSid()
-    {
-        try
-        {
-            return WindowsIdentity.GetCurrent().User?.Value ?? "";
-        }
-        catch
-        {
-            return "";
-        }
-    }
-
-    private static string GetCurrentUserDisplayName()
-    {
-        string domain = Environment.UserDomainName;
-        string user = Environment.UserName;
-        return string.IsNullOrEmpty(domain) ? user : $@"{domain}\{user}";
     }
 
     static void Main(string[] args)
