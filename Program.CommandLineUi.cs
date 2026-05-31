@@ -12,92 +12,15 @@ partial class Program
         switch (command)
         {
             case "set":
-                if (args.Length >= 3)
-                {
-                    if (args[1].ToLower() == "path")
-                    {
-                        // 设置 BetterGI 路径
-                        string newPath = args[2].Trim().Trim('"');
-                        if (File.Exists(newPath))
-                        {
-                            SaveConfigPath(newPath);
-                            Console.WriteLine($"BetterGI路径已设置为: {newPath}");
-                        }
-                        else
-                        {
-                            Console.WriteLine($"错误: 文件不存在: {newPath}");
-                        }
-                    }
-                    else if (args[1].ToLower() == "memory")
-                    {
-                        if (int.TryParse(args[2], out int mem) && mem > 0 && mem <= 100)
-                        {
-                            var cfg = LoadConfig();
-                            SaveConfig(mem, cfg.monitorIntervalSeconds, cfg.missingCountThreshold, cfg.skipSetup, cfg.betterGiMemoryLimitMB);
-                            Console.WriteLine($"内存阈值已设置为 {mem}%");
-                        }
-                        else
-                        {
-                            Console.WriteLine("错误: 内存阈值应在 1-100 之间");
-                        }
-                    }
-                    else if (args[1].ToLower() == "interval")
-                    {
-                        if (int.TryParse(args[2], out int interval) && interval > 0)
-                        {
-                            var cfg = LoadConfig();
-                            SaveConfig(cfg.memoryPercent, interval, cfg.missingCountThreshold, cfg.skipSetup, cfg.betterGiMemoryLimitMB);
-                            Console.WriteLine($"监控间隔已设置为 {interval} 秒");
-                        }
-                        else
-                        {
-                            Console.WriteLine("错误: 监控间隔应大于 0");
-                        }
-                    }
-                    else if (args[1].ToLower() == "count")
-                    {
-                        if (int.TryParse(args[2], out int count) && count > 0 && count <= 10)
-                        {
-                            var cfg = LoadConfig();
-                            SaveConfig(cfg.memoryPercent, cfg.monitorIntervalSeconds, count, cfg.skipSetup, cfg.betterGiMemoryLimitMB);
-                            Console.WriteLine($"丢失计数阈值已设置为 {count} 次");
-                        }
-                        else
-                        {
-                            Console.WriteLine("错误: 丢失计数阈值应在 1-10 之间");
-                        }
-                    }
-                    else if (args[1].ToLower() == "skip")
-                    {
-                        var cfg = LoadConfig();
-                        bool newSkip = !cfg.skipSetup;
-                        SaveConfig(cfg.memoryPercent, cfg.monitorIntervalSeconds, cfg.missingCountThreshold, newSkip, cfg.betterGiMemoryLimitMB);
-                        Console.WriteLine($"跳过设置界面已设置为: {newSkip}");
-                    }
-                    else if (args[1].ToLower() == "memlimit")
-                    {
-                        if (int.TryParse(args[2], out int limit) && limit >= 0)
-                        {
-                            var cfg = LoadConfig();
-                            SaveConfig(cfg.memoryPercent, cfg.monitorIntervalSeconds, cfg.missingCountThreshold, cfg.skipSetup, limit);
-                            if (limit == 0)
-                                Console.WriteLine("进程内存监控已禁用");
-                            else
-                                Console.WriteLine($"进程内存阈值已设置为 {limit}MB");
-                        }
-                        else
-                        {
-                            Console.WriteLine("错误: 进程内存阈值应为 >= 0 的整数 (0 表示禁用)");
-                        }
-                    }
-                    else
-                    {
-                        ShowHelp();
-                    }
-                }
-                else if (args.Length == 2 && args[1].ToLower() == "show")
+                if (args.Length == 2 && args[1].ToLower() == "show")
                 {
                     ShowConfig();
+                }
+                else if (args.Length >= 2)
+                {
+                    CommandLineConfigResult result = HandleSetCommand(args);
+                    if (!string.IsNullOrEmpty(result.Message))
+                        Console.WriteLine(result.Message);
                 }
                 else
                 {
@@ -142,6 +65,38 @@ partial class Program
     /// <summary>
     /// 显示帮助
     /// </summary>
+    private static CommandLineConfigResult HandleSetCommand(string[] args)
+    {
+        if (args.Length < 2)
+            return CommandLineConfigResult.Failure("");
+
+        string option = args[1].ToLower();
+        if (option == "skip")
+            return CommandLineConfigService.ToggleSkipSetup(ConfigStore);
+
+        if (args.Length < 3)
+        {
+            ShowHelp();
+            return CommandLineConfigResult.Failure("");
+        }
+
+        return option switch
+        {
+            "path" => CommandLineConfigService.SetPath(ConfigStore, args[2]),
+            "memory" => CommandLineConfigService.SetMemory(ConfigStore, args[2]),
+            "interval" => CommandLineConfigService.SetInterval(ConfigStore, args[2]),
+            "count" => CommandLineConfigService.SetMissingCount(ConfigStore, args[2]),
+            "memlimit" => CommandLineConfigService.SetProcessMemoryLimit(ConfigStore, args[2]),
+            _ => ShowHelpAndReturnEmpty()
+        };
+    }
+
+    private static CommandLineConfigResult ShowHelpAndReturnEmpty()
+    {
+        ShowHelp();
+        return CommandLineConfigResult.Failure("");
+    }
+
     private static void ShowHelp()
     {
         Console.WriteLine("BGIguard 命令行工具");
