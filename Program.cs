@@ -33,13 +33,6 @@ partial class Program
     private static bool _skipSetup = false;
     private static int _betterGiMemoryLimitMB = 4096;
 
-    // 丢失计数
-    private static int _missingCount = 0;
-    private static int _gameExitCount = 0;
-
-
-    // 日志清理状态
-
     // 获取显示版本
     private static string GetDisplayVersion()
     {
