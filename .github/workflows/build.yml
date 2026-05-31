@@ -1,13 +1,28 @@
-name: Build BGIguard
+name: Build and Release BGIguard
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       version:
-        description: '版本号'
+        description: 'Version number, for example 5.0.0'
         required: false
         default: '5.0.0'
         type: string
+      self_contained:
+        description: 'Build self-contained package with .NET runtime included'
+        required: false
+        default: false
+        type: boolean
+      publish_release:
+        description: 'Create or update GitHub Release on manual run'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -20,7 +35,37 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0'
+          dotnet-version: '8.0.x'
+
+      - name: Resolve build metadata
+        id: meta
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "release") {
+            $version = "${{ github.event.release.tag_name }}"
+          } else {
+            $version = "${{ inputs.version }}"
+          }
+
+          $version = $version.TrimStart("v")
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            $version = "5.0.0"
+          }
+
+          $selfContained = "${{ inputs.self_contained }}"
+          if ("${{ github.event_name }}" -eq "release" -and [string]::IsNullOrWhiteSpace($selfContained)) {
+            $selfContained = "false"
+          }
+
+          $mode = if ($selfContained -eq "true") { "self-contained" } else { "framework-dependent" }
+          $zipName = "BGIguard_v$version-$mode-win-x64.zip"
+          $tagName = "v$version"
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "self_contained=$selfContained" >> $env:GITHUB_OUTPUT
+          "mode=$mode" >> $env:GITHUB_OUTPUT
+          "zip_name=$zipName" >> $env:GITHUB_OUTPUT
+          "tag_name=$tagName" >> $env:GITHUB_OUTPUT
 
       - name: Build solution
         run: dotnet build BGIguard.sln -c Release
@@ -28,28 +73,88 @@ jobs:
       - name: Test
         run: dotnet test BGIguard.sln -c Release --no-build
 
-      - name: Publish (self-contained, single file)
+      - name: Publish framework-dependent single file
+        if: steps.meta.outputs.self_contained != 'true'
+        shell: pwsh
         run: |
-          dotnet publish BGIguard.csproj -c Release -p:PublishSingleFile=true --self-contained true -p:DebugType=none -p:DebugSymbols=false -p:Version=${{ github.event.inputs.version || '5.0.0' }} -p:AssemblyVersion=${{ github.event.inputs.version || '5.0.0' }} -p:FileVersion=${{ github.event.inputs.version || '5.0.0' }} -o ./publish -r win-x64
+          dotnet publish BGIguard.csproj -c Release -r win-x64 `
+            -p:PublishSingleFile=true `
+            -p:SelfContained=false `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=none `
+            -p:DebugSymbols=false `
+            -p:Version=${{ steps.meta.outputs.version }} `
+            -p:AssemblyVersion=${{ steps.meta.outputs.version }} `
+            -p:FileVersion=${{ steps.meta.outputs.version }} `
+            --self-contained false `
+            -o ./publish
 
-      - name: Remove bin directory
+      - name: Publish self-contained single file
+        if: steps.meta.outputs.self_contained == 'true'
+        shell: pwsh
         run: |
-          if (Test-Path "bin") { Remove-Item -Recurse -Force "bin" }
+          dotnet publish BGIguard.csproj -c Release -r win-x64 `
+            -p:PublishSingleFile=true `
+            -p:SelfContained=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:DebugType=none `
+            -p:DebugSymbols=false `
+            -p:Version=${{ steps.meta.outputs.version }} `
+            -p:AssemblyVersion=${{ steps.meta.outputs.version }} `
+            -p:FileVersion=${{ steps.meta.outputs.version }} `
+            --self-contained true `
+            -o ./publish
 
-      - name: Update version in project files
+      - name: Copy documentation
+        shell: pwsh
         run: |
-          $version = "${{ github.event.inputs.version || '5.0.0' }}"
-          $versionMain = $version + ".0"
+          if (Test-Path ./README.md) { Copy-Item ./README.md ./publish/ -Force }
+          if (Test-Path ./SPEC.md) { Copy-Item ./SPEC.md ./publish/ -Force }
 
-          # Update BGIguard.csproj
-          (Get-Content "BGIguard.csproj" -Raw) -replace '<Version>\d+\.\d+\.\d+</Version>', "<Version>$version</Version>" -replace '<AssemblyVersion>\d+\.\d+\.\d+\.0</AssemblyVersion>', "<AssemblyVersion>$versionMain</AssemblyVersion>" -replace '<FileVersion>\d+\.\d+\.\d+\.0</FileVersion>', "<FileVersion>$versionMain</FileVersion>" | Set-Content "BGIguard.csproj" -NoNewline -Encoding UTF8
-
-          # Update build.ps1
-          (Get-Content "build.ps1" -Raw) -replace '(?<=Version\s*=\s*")[\d.]+(?=")', $version | Set-Content "build.ps1" -NoNewline -Encoding UTF8
+      - name: Create ZIP archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path ./artifacts | Out-Null
+          Compress-Archive -Path ./publish/* -DestinationPath "./artifacts/${{ steps.meta.outputs.zip_name }}" -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BGIguard-${{ github.event.inputs.version || '5.0.0' }}
-          path: publish/
+          name: BGIguard-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.mode }}
+          path: ./artifacts/${{ steps.meta.outputs.zip_name }}
           retention-days: 30
+
+      - name: Calculate SHA256
+        id: hash
+        shell: pwsh
+        run: |
+          $zipPath = "./artifacts/${{ steps.meta.outputs.zip_name }}"
+          $hash = (Get-FileHash -Algorithm SHA256 -Path $zipPath).Hash.ToLower()
+          $size = [math]::Round((Get-Item $zipPath).Length / 1MB, 2)
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+          "size=$size" >> $env:GITHUB_OUTPUT
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release' || inputs.publish_release == true
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || steps.meta.outputs.tag_name }}
+          name: BGIguard ${{ steps.meta.outputs.tag_name }}
+          files: ./artifacts/${{ steps.meta.outputs.zip_name }}
+          body: |
+            ## BGIguard ${{ steps.meta.outputs.tag_name }}
+
+            ### Download
+            - `${{ steps.meta.outputs.zip_name }}`
+
+            ### Publish mode
+            - `${{ steps.meta.outputs.mode }}`
+            - framework-dependent: smaller package, requires .NET 8 Desktop Runtime on target machine.
+            - self-contained: larger package, includes .NET runtime.
+
+            ### File info
+            - SHA256: `${{ steps.hash.outputs.sha256 }}`
+            - Size: `${{ steps.hash.outputs.size }} MB`
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
