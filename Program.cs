@@ -12,27 +12,25 @@ class Program
     private const string BetterGiExeName = "BetterGI.exe";
     private const int MaxLogFiles = 7;
     private const string LogFilePrefix = "BGI_guard";
-
-    private static string _exeDirectory = null!;
-    private static string _betterGiExePath = "";
-    private static readonly string _version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "1.0";
     private static readonly string[] GameProcessNames = { "YuanShen", "GenshinImpact" };
 
-    private static int _monitorIntervalMs = 5000;
-    private static int _memoryPercent = 95;
-    private static int _missingCountThreshold = 3;
-    private static bool _skipSetup = false;
-    private static int _betterGiMemoryLimitMB = 4096;
+    private static string _exeDirectory = null!;
+    private static readonly string _version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "1.0";
 
     private static AppLogger? _logger;
     private static ConfigService? _configService;
+    private static ConsoleUiService? _consoleUiService;
     private static BetterGiRuntimeService? _runtimeService;
+    private static RuntimeConfigProvider? _runtimeConfigProvider;
+    private static GuardLoopService? _guardLoopService;
 
     private static AppLogger LoggerStore => _logger ??= new AppLogger(_exeDirectory, LogFilePrefix, MaxLogFiles, GetDisplayVersion);
     private static string ConfigFilePath => Path.Combine(_exeDirectory, "BGIguard_config.json");
     private static ConfigService ConfigStore => _configService ??= new ConfigService(ConfigFilePath, Log);
-    private static ConsoleUiService ConsoleUi => new(ConfigStore, ConfigFilePath, ClearConfigCache);
+    private static ConsoleUiService ConsoleUi => _consoleUiService ??= new ConsoleUiService(ConfigStore, ConfigFilePath, ClearConfigCache);
     private static BetterGiRuntimeService RuntimeService => _runtimeService ??= new BetterGiRuntimeService(BetterGiExeName, ProcessWaitExitMs, RestartDelayMs, Log);
+    private static RuntimeConfigProvider RuntimeConfigProvider => _runtimeConfigProvider ??= new RuntimeConfigProvider(ConfigStore, _exeDirectory, BetterGiExeName, ConsoleUi);
+    private static GuardLoopService GuardLoop => _guardLoopService ??= new GuardLoopService(BetterGiExeName, GameProcessNames, RuntimeConfigProvider, RuntimeService, ProcessWaitExitMs, RestartDelayMs, Log);
 
     static void Main(string[] args)
     {
@@ -48,24 +46,14 @@ class Program
             return;
         }
 
-        ApplyRuntimeConfig(LoadConfig());
-        EnsureBetterGiPath();
-
-        if (!_skipSetup)
+        PrepareRuntime();
+        if (!RuntimeConfigProvider.SkipSetup)
         {
             ConsoleUi.ShowCommandLineSetup();
-            ApplyRuntimeConfig(LoadConfig());
-            EnsureBetterGiPath();
+            PrepareRuntime();
         }
 
-        Log("INFO", "BGIguard 启动成功");
-        Log("INFO", $"BetterGI 路径: {_betterGiExePath}");
-        Log("INFO", $"进程内存阈值: {(_betterGiMemoryLimitMB > 0 ? $"{_betterGiMemoryLimitMB}MB" : "已禁用")}");
-
-        RuntimeService.EnsureSingleInstance();
-        RuntimeService.EnsureStartedAndCacheCommand(_betterGiExePath);
-
-        RunGuardLoop();
+        StartGuard();
     }
 
     private static string GetDisplayVersion()
@@ -79,104 +67,35 @@ class Program
         LoggerStore.Write(level, message);
     }
 
-    private static void EnsureBetterGiPath()
-    {
-        if (!DetectBetterGiPath())
-        {
-            _betterGiExePath = ConsoleUi.PromptForBetterGiPath();
-        }
-    }
-
-    private static void ApplyRuntimeConfig((string betterGiPath, int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup, int betterGiMemoryLimitMB) config)
-    {
-        _skipSetup = config.skipSetup;
-        _monitorIntervalMs = config.monitorIntervalSeconds * 1000;
-        _memoryPercent = config.memoryPercent;
-        _missingCountThreshold = config.missingCountThreshold;
-        _betterGiMemoryLimitMB = config.betterGiMemoryLimitMB;
-
-        if (!string.IsNullOrEmpty(config.betterGiPath) &&
-            File.Exists(config.betterGiPath) &&
-            !string.Equals(_betterGiExePath, config.betterGiPath, StringComparison.OrdinalIgnoreCase))
-        {
-            _betterGiExePath = config.betterGiPath;
-        }
-    }
-
-    private static bool DetectBetterGiPath()
-    {
-        var config = LoadConfig();
-        string resolvedPath = PathService.ResolveBetterGiPath(_exeDirectory, BetterGiExeName, config.betterGiPath);
-        if (string.IsNullOrEmpty(resolvedPath))
-            return false;
-
-        _betterGiExePath = resolvedPath;
-        return true;
-    }
-
-    private static (string betterGiPath, int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup, int betterGiMemoryLimitMB) LoadConfig()
-    {
-        RuntimeConfig config = ConfigStore.Load();
-        return (config.BetterGiPath, config.MemoryPercent, config.MonitorIntervalSeconds, config.MissingCountThreshold, config.SkipSetup, config.BetterGiMemoryLimitMB);
-    }
-
     private static void ClearConfigCache()
     {
         ConfigStore.ClearCache();
+        _runtimeConfigProvider = null;
     }
 
-    private static void RunGuardLoop()
+    private static void PrepareRuntime()
     {
-        var runner = new GuardRunner(
-            new GuardRunnerOptions(
-                BetterGiExeName.Replace(".exe", ""),
-                GameProcessNames,
-                RuntimeService.CurrentUserSid,
-                RuntimeService.CurrentUserName,
-                ReloadGuardRunnerConfig,
-                GetBetterGiSnapshotForRunner,
-                GetRunningGameProcessesForRunner,
-                () => MemoryMonitor.GetSystemMemory(Log),
-                RestartBetterGiForRunner,
-                Thread.Sleep,
-                Log),
-            new GuardRuntimeState
-            {
-                CachedCommand = RuntimeService.CachedCommand
-            });
-
-        runner.Run();
+        RuntimeConfigProvider.Reload();
+        RuntimeConfigProvider.EnsureBetterGiPath();
     }
 
-    private static GuardRunnerConfig ReloadGuardRunnerConfig()
+    private static void StartGuard(bool ensureStarted = true)
     {
-        ApplyRuntimeConfig(LoadConfig());
-        return new GuardRunnerConfig(
-            _betterGiExePath,
-            _monitorIntervalMs,
-            _memoryPercent,
-            _missingCountThreshold,
-            _betterGiMemoryLimitMB,
-            ProcessWaitExitMs,
-            RestartDelayMs);
-    }
+        Log("INFO", "BGIguard 启动成功");
+        Log("INFO", $"BetterGI 路径: {RuntimeConfigProvider.BetterGiExePath}");
+        Log("INFO", $"进程内存阈值: {(RuntimeConfigProvider.BetterGiMemoryLimitMB > 0 ? $"{RuntimeConfigProvider.BetterGiMemoryLimitMB}MB" : "已禁用")}");
 
-    private static BetterGiProcessSnapshot GetBetterGiSnapshotForRunner(GuardRunnerConfig config)
-    {
-        return RuntimeService.GetBetterGiSnapshot(
-            config.BetterGiExePath,
-            includeCommandLine: true,
-            includeMemory: config.BetterGiMemoryLimitMB > 0);
-    }
+        RuntimeService.EnsureSingleInstance();
+        if (ensureStarted)
+        {
+            RuntimeService.EnsureStartedAndCacheCommand(RuntimeConfigProvider.BetterGiExePath);
+        }
+        else
+        {
+            RuntimeService.StartBetterGiProcess(RuntimeConfigProvider.BetterGiExePath);
+        }
 
-    private static (bool AnyRunning, List<string> RunningNames) GetRunningGameProcessesForRunner()
-    {
-        return RuntimeService.GetRunningGameProcesses(GameProcessNames);
-    }
-
-    private static void RestartBetterGiForRunner(GuardRunnerConfig config, string cachedCommand)
-    {
-        RuntimeService.RestartBetterGi(config, cachedCommand);
+        GuardLoop.Run();
     }
 
     private static void HandleCommandLine(string[] args)
@@ -210,16 +129,9 @@ class Program
                 break;
 
             default:
-                var config = LoadConfig();
-                ApplyRuntimeConfig(config);
-                EnsureBetterGiPath();
-
-                Log("INFO", "BGIguard 启动成功");
-                RuntimeService.EnsureSingleInstance();
-                RuntimeService.StartBetterGiProcess(_betterGiExePath);
-                RunGuardLoop();
+                PrepareRuntime();
+                StartGuard(ensureStarted: false);
                 break;
         }
     }
-
 }
