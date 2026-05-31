@@ -11,6 +11,10 @@ internal static class ProcessService
     private const int TokenUser = 1;
     private const int PROCESS_QUERY_INFORMATION = 0x0400;
     private const int PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+    private const int PROCESS_VM_READ = 0x0010;
+    private const int ProcessBasicInformation = 0;
+    private static readonly int PebProcessParametersOffset = IntPtr.Size == 8 ? 0x20 : 0x10;
+    private static readonly int ProcessParametersCommandLineOffset = IntPtr.Size == 8 ? 0x70 : 0x40;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct SID_AND_ATTRIBUTES
@@ -25,11 +29,46 @@ internal static class ProcessService
         public SID_AND_ATTRIBUTES User;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PROCESS_BASIC_INFORMATION
+    {
+        public IntPtr Reserved1;
+        public IntPtr PebBaseAddress;
+        public IntPtr Reserved2_0;
+        public IntPtr Reserved2_1;
+        public IntPtr UniqueProcessId;
+        public IntPtr Reserved3;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct UNICODE_STRING
+    {
+        public ushort Length;
+        public ushort MaximumLength;
+        public IntPtr Buffer;
+    }
+
+    [DllImport("ntdll.dll")]
+    private static extern int NtQueryInformationProcess(
+        IntPtr processHandle,
+        int processInformationClass,
+        ref PROCESS_BASIC_INFORMATION processInformation,
+        int processInformationLength,
+        out int returnLength);
+
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr OpenProcess(
         int dwDesiredAccess,
         bool bInheritHandle,
         int dwProcessId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool ReadProcessMemory(
+        IntPtr hProcess,
+        IntPtr lpBaseAddress,
+        byte[] lpBuffer,
+        int dwSize,
+        out int lpNumberOfBytesRead);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CloseHandle(IntPtr hObject);
@@ -140,6 +179,88 @@ internal static class ProcessService
         }
 
         return (running.Count > 0, running);
+    }
+
+    public static BetterGiProcessSnapshot GetOwnedProcessSnapshot(
+        string processName,
+        string expectedExePath,
+        string currentUserSid,
+        string currentUserName,
+        bool includeCommandLine,
+        bool includeMemory,
+        Action<string, string> log)
+    {
+        if (string.IsNullOrEmpty(expectedExePath))
+            return default;
+
+        BetterGiProcessSnapshot snapshot = default;
+        ForEachProcessByName(processName, process =>
+        {
+            if (snapshot.Exists)
+                return;
+
+            try
+            {
+                var owner = GetProcessOwner(process.Id);
+                if (!IsCurrentUserProcess(owner, currentUserSid, currentUserName))
+                    return;
+
+                string? modulePath = process.MainModule?.FileName;
+                if (!string.Equals(modulePath, expectedExePath, StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                string? commandLine = includeCommandLine ? GetProcessCommandLine(process.Id) : null;
+                long memoryMB = includeMemory ? process.PrivateMemorySize64 / 1024 / 1024 : 0;
+                snapshot = new BetterGiProcessSnapshot(true, commandLine, memoryMB);
+            }
+            catch (Exception ex)
+            {
+                log("ERROR", $"获取 BetterGI 进程信息失败: {ex.Message}");
+            }
+        });
+
+        return snapshot;
+    }
+
+    public static string? GetProcessCommandLine(int processId)
+    {
+        IntPtr hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, processId);
+        if (hProcess == IntPtr.Zero)
+            return null;
+
+        try
+        {
+            var pbi = new PROCESS_BASIC_INFORMATION();
+            int status = NtQueryInformationProcess(hProcess, ProcessBasicInformation, ref pbi, Marshal.SizeOf(pbi), out _);
+            if (status != 0)
+                return null;
+
+            byte[] buffer = new byte[IntPtr.Size];
+            if (!ReadProcessMemory(hProcess, IntPtr.Add(pbi.PebBaseAddress, PebProcessParametersOffset), buffer, IntPtr.Size, out _))
+                return null;
+
+            IntPtr processParameters = IntPtr.Size == 8
+                ? (IntPtr)BitConverter.ToInt64(buffer, 0)
+                : (IntPtr)BitConverter.ToInt32(buffer, 0);
+
+            byte[] cmdLineBuffer = new byte[Marshal.SizeOf<UNICODE_STRING>()];
+            if (!ReadProcessMemory(hProcess, IntPtr.Add(processParameters, ProcessParametersCommandLineOffset), cmdLineBuffer, cmdLineBuffer.Length, out _))
+                return null;
+
+            var unicodeString = MemoryMarshal.Read<UNICODE_STRING>(cmdLineBuffer);
+            if (unicodeString.Buffer == IntPtr.Zero || unicodeString.Length == 0)
+                return null;
+
+            byte[] cmdLineBytes = new byte[unicodeString.Length];
+            if (!ReadProcessMemory(hProcess, unicodeString.Buffer, cmdLineBytes, unicodeString.Length, out _))
+                return null;
+
+            return Encoding.Unicode.GetString(cmdLineBytes);
+        }
+        finally
+        {
+            CloseHandle(hProcess);
+        }
     }
 
     public static ProcessOwnerInfo GetProcessOwner(int processId)

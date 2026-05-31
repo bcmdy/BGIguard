@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
-using System.Text;
 
 namespace BGIguard;
 
@@ -83,14 +81,6 @@ partial class Program
     }
 
     /// <summary>
-    /// 检查进程是否属于当前用户
-    /// </summary>
-    private static bool IsProcessOwnedByCurrentUser(int processId)
-    {
-        return ProcessService.IsCurrentUserProcess(ProcessService.GetProcessOwner(processId), _currentUserSid, _currentUserName);
-    }
-
-    /// <summary>
     /// 过滤 cmd.exe /c start 参数中的高风险控制字符。
     /// </summary>
     private static string FilterCmdArguments(string args)
@@ -133,32 +123,14 @@ partial class Program
     /// </summary>
     private static BetterGiProcessSnapshot GetBetterGiSnapshot(bool includeCommandLine, bool includeMemory)
     {
-        if (string.IsNullOrEmpty(_betterGiExePath)) return default;
-
-        foreach (var process in Process.GetProcessesByName(BetterGiExeName.Replace(".exe", "")))
-        {
-            try
-            {
-                if (!IsProcessOwnedByCurrentUser(process.Id))
-                    continue;
-                string? modulePath = process.MainModule?.FileName;
-                if (string.Equals(modulePath, _betterGiExePath, StringComparison.OrdinalIgnoreCase))
-                {
-                    string? commandLine = includeCommandLine ? GetProcessCommandLine(process.Id) : null;
-                    long memoryMB = includeMemory ? process.PrivateMemorySize64 / 1024 / 1024 : 0;
-                    return new BetterGiProcessSnapshot(true, commandLine, memoryMB);
-                }
-            }
-            catch (Exception ex)
-            {
-                Log("ERROR", $"获取 BetterGI 进程信息失败: {ex.Message}");
-            }
-            finally
-            {
-                process.Dispose();
-            }
-        }
-        return default;
+        return ProcessService.GetOwnedProcessSnapshot(
+            BetterGiExeName.Replace(".exe", ""),
+            _betterGiExePath,
+            _currentUserSid,
+            _currentUserName,
+            includeCommandLine,
+            includeMemory,
+            Log);
     }
 
     /// <summary>
@@ -167,52 +139,6 @@ partial class Program
     private static (bool anyRunning, List<string> runningNames) GetRunningGameProcesses()
     {
         return ProcessService.GetRunningOwnedProcesses(GameProcessNames, _currentUserSid, _currentUserName);
-    }
-
-    /// <summary>
-    /// 获取进程命令行（通过 NtQueryInformationProcess 读取 PEB）
-    /// </summary>
-    private static string? GetProcessCommandLine(int processId)
-    {
-        IntPtr hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, processId);
-        if (hProcess == IntPtr.Zero)
-            return null;
-
-        try
-        {
-            var pbi = new PROCESS_BASIC_INFORMATION();
-            int status = NtQueryInformationProcess(hProcess, ProcessBasicInformation, ref pbi, Marshal.SizeOf(pbi), out _);
-            if (status != 0) return null;
-
-            // 读取 PEB 中的 ProcessParameters 指针
-            byte[] buffer = new byte[IntPtr.Size];
-            if (!ReadProcessMemory(hProcess, IntPtr.Add(pbi.PebBaseAddress, PEB_OFFSET), buffer, IntPtr.Size, out _))
-                return null;
-
-            IntPtr processParameters = IntPtr.Size == 8
-                ? (IntPtr)BitConverter.ToInt64(buffer, 0)
-                : (IntPtr)BitConverter.ToInt32(buffer, 0);
-
-            // 读取 CommandLine UNICODE_STRING
-            byte[] cmdLineBuffer = new byte[Marshal.SizeOf<UNICODE_STRING>()];
-            if (!ReadProcessMemory(hProcess, IntPtr.Add(processParameters, CMDLINE_OFFSET), cmdLineBuffer, cmdLineBuffer.Length, out _))
-                return null;
-
-            var unicodeString = MemoryMarshal.Read<UNICODE_STRING>(cmdLineBuffer);
-            if (unicodeString.Buffer == IntPtr.Zero || unicodeString.Length == 0)
-                return null;
-
-            // 读取实际的命令行字符串
-            byte[] cmdLineBytes = new byte[unicodeString.Length];
-            if (!ReadProcessMemory(hProcess, unicodeString.Buffer, cmdLineBytes, unicodeString.Length, out _))
-                return null;
-
-            return Encoding.Unicode.GetString(cmdLineBytes);
-        }
-        finally
-        {
-            CloseHandle(hProcess);
-        }
     }
 
 }
