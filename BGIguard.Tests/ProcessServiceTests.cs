@@ -19,4 +19,20 @@ public sealed class ProcessServiceTests
         Assert.True(ProcessService.IsCurrentUserProcess(owner, "", @"DOMAIN\User"));
         Assert.False(ProcessService.IsCurrentUserProcess(owner, "", @"DOMAIN\Other"));
     }
+
+    [Fact]
+    public void BuildCmdStartArguments_UsesEmptyTitleAndQuotedExecutable()
+    {
+        string args = ProcessService.BuildCmdStartArguments(@"C:\Program Files\App\Target.exe", "--foo bar");
+
+        Assert.Equal("/c start \"\" \"C:\\Program Files\\App\\Target.exe\" --foo bar", args);
+    }
+
+    [Fact]
+    public void BuildCmdStartArguments_OmitsTrailingArgumentsWhenEmpty()
+    {
+        string args = ProcessService.BuildCmdStartArguments(@"C:\App\Target.exe", "");
+
+        Assert.Equal("/c start \"\" \"C:\\App\\Target.exe\"", args);
+    }
 }

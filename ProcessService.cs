@@ -58,6 +58,90 @@ internal static class ProcessService
         }
     }
 
+    public static void TerminateProcessesByCurrentUser(
+        string processName,
+        string logPrefix,
+        int? excludePid,
+        int waitExitMs,
+        string currentUserSid,
+        string currentUserName,
+        Action<string, string> log)
+    {
+        ForEachProcessByName(processName, process =>
+        {
+            try
+            {
+                if (excludePid.HasValue && process.Id == excludePid.Value)
+                    return;
+
+                var owner = GetProcessOwner(process.Id);
+                if (IsCurrentUserProcess(owner, currentUserSid, currentUserName))
+                {
+                    process.Kill();
+                    process.WaitForExit(waitExitMs);
+                    log("INFO", $"已终止 {logPrefix} PID:{process.Id} ({owner.Display})");
+                }
+                else if (owner.HasIdentity)
+                {
+                    log("WARN", $"{logPrefix} PID:{process.Id} 属于{owner.Display}，跳过终止");
+                }
+            }
+            catch (Exception ex)
+            {
+                log("ERROR", $"终止 {logPrefix} PID:{process.Id} 失败: {ex.Message}");
+            }
+        });
+    }
+
+    public static bool StartDetachedWithCmdStart(string exePath, string commandArgs, Action<string, string> log)
+    {
+        try
+        {
+            ProcessStartInfo startInfo = new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = BuildCmdStartArguments(exePath, commandArgs),
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var startedProcess = Process.Start(startInfo);
+            log("INFO", $"已启动 BetterGI.exe" + (string.IsNullOrEmpty(commandArgs) ? "" : $" (参数: {commandArgs})"));
+            return true;
+        }
+        catch (Exception ex)
+        {
+            log("ERROR", $"启动失败: {ex.Message}");
+            return false;
+        }
+    }
+
+    public static string BuildCmdStartArguments(string exePath, string commandArgs)
+    {
+        return string.IsNullOrEmpty(commandArgs)
+            ? $"/c start \"\" \"{exePath}\""
+            : $"/c start \"\" \"{exePath}\" {commandArgs}";
+    }
+
+    public static (bool anyRunning, List<string> runningNames) GetRunningOwnedProcesses(
+        IReadOnlyCollection<string> processNames,
+        string currentUserSid,
+        string currentUserName)
+    {
+        var running = new List<string>();
+        foreach (var name in processNames)
+        {
+            ForEachProcessByName(name, process =>
+            {
+                var owner = GetProcessOwner(process.Id);
+                if (IsCurrentUserProcess(owner, currentUserSid, currentUserName))
+                    running.Add(name);
+            });
+        }
+
+        return (running.Count > 0, running);
+    }
+
     public static ProcessOwnerInfo GetProcessOwner(int processId)
     {
         IntPtr hProcess = IntPtr.Zero;

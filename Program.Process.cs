@@ -30,30 +30,7 @@ partial class Program
     /// </summary>
     private static void TerminateProcessesByUser(string processName, string logPrefix, int? excludePid = null)
     {
-        ProcessService.ForEachProcessByName(processName, process =>
-        {
-            try
-            {
-                if (excludePid.HasValue && process.Id == excludePid.Value)
-                    return;
-
-                var owner = GetProcessOwner(process.Id);
-                if (IsCurrentUserProcess(owner))
-                {
-                    process.Kill();
-                    process.WaitForExit(ProcessWaitExitMs);
-                    Log("INFO", $"已终止 {logPrefix} PID:{process.Id} ({owner.Display})");
-                }
-                else if (owner.HasIdentity)
-                {
-                    Log("WARN", $"{logPrefix} PID:{process.Id} 属于{owner.Display}，跳过终止");
-                }
-            }
-            catch (Exception ex)
-            {
-                Log("ERROR", $"终止 {logPrefix} PID:{process.Id} 失败: {ex.Message}");
-            }
-        });
+        ProcessService.TerminateProcessesByCurrentUser(processName, logPrefix, excludePid, ProcessWaitExitMs, _currentUserSid, _currentUserName, Log);
     }
 
     /// <summary>
@@ -64,16 +41,6 @@ partial class Program
         using var currentProcess = Process.GetCurrentProcess();
         string currentProcessName = currentProcess.ProcessName;
         TerminateProcessesByUser(currentProcessName, "旧守护进程", Environment.ProcessId);
-    }
-
-    private static ProcessOwnerInfo GetProcessOwner(int processId)
-    {
-        return ProcessService.GetProcessOwner(processId);
-    }
-
-    private static bool IsCurrentUserProcess(ProcessOwnerInfo owner)
-    {
-        return ProcessService.IsCurrentUserProcess(owner, _currentUserSid, _currentUserName);
     }
 
     /// <summary>
@@ -96,29 +63,7 @@ partial class Program
             cmdArgs = filteredArgs;
         }
 
-        try
-        {
-            // 关键修复：使用 "" 作为空窗口标题占位
-            // 否则如果 cmdArgs 以引号开头，会被 start 当作窗口标题解析
-            string arguments = string.IsNullOrEmpty(cmdArgs)
-                ? $"/c start \"\" \"{_betterGiExePath}\""
-                : $"/c start \"\" \"{_betterGiExePath}\" {cmdArgs}";
-
-            ProcessStartInfo startInfo = new ProcessStartInfo
-            {
-                FileName = "cmd.exe",
-                Arguments = arguments,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var startedProcess = Process.Start(startInfo);
-            Log("INFO", $"已启动 BetterGI.exe" + (string.IsNullOrEmpty(cmdArgs) ? "" : $" (参数: {cmdArgs})"));
-        }
-        catch (Exception ex)
-        {
-            Log("ERROR", $"启动失败: {ex.Message}");
-        }
+        ProcessService.StartDetachedWithCmdStart(_betterGiExePath, cmdArgs, Log);
     }
 
     /// <summary>
@@ -142,7 +87,7 @@ partial class Program
     /// </summary>
     private static bool IsProcessOwnedByCurrentUser(int processId)
     {
-        return IsCurrentUserProcess(GetProcessOwner(processId));
+        return ProcessService.IsCurrentUserProcess(ProcessService.GetProcessOwner(processId), _currentUserSid, _currentUserName);
     }
 
     /// <summary>
@@ -221,16 +166,7 @@ partial class Program
     /// </summary>
     private static (bool anyRunning, List<string> runningNames) GetRunningGameProcesses()
     {
-        var games = new List<string>();
-        foreach (var name in GameProcessNames)
-        {
-            ProcessService.ForEachProcessByName(name, process =>
-            {
-                if (IsProcessOwnedByCurrentUser(process.Id))
-                    games.Add(name);
-            });
-        }
-        return (games.Count > 0, games);
+        return ProcessService.GetRunningOwnedProcesses(GameProcessNames, _currentUserSid, _currentUserName);
     }
 
     /// <summary>
