@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace BGIguard;
 
 partial class Program
@@ -9,18 +7,12 @@ partial class Program
     /// </summary>
     private static void HandleSingleInstance()
     {
-        string mutexName = "BGIguard_SingleInstance_Mutex";
-        bool createdNew;
-        _mutex = new Mutex(true, mutexName, out createdNew);
-
-        if (!createdNew)
-        {
-            Log("WARN", "检测到已存在的守护进程，正在终止...");
-            TerminateExistingGuard();
-            _mutex = new Mutex(true, mutexName, out createdNew);
-        }
-
-        Log("INFO", "单实例保护已生效");
+        _mutex = ProcessService.EnsureSingleInstance(
+            "BGIguard_SingleInstance_Mutex",
+            ProcessWaitExitMs,
+            _currentUserSid,
+            _currentUserName,
+            Log);
     }
 
     /// <summary>
@@ -32,36 +24,15 @@ partial class Program
     }
 
     /// <summary>
-    /// 终止已存在的守护进程（按用户和进程名）
-    /// </summary>
-    private static void TerminateExistingGuard()
-    {
-        using var currentProcess = Process.GetCurrentProcess();
-        string currentProcessName = currentProcess.ProcessName;
-        TerminateProcessesByUser(currentProcessName, "旧守护进程", Environment.ProcessId);
-    }
-
-    /// <summary>
     /// 启动 BetterGI.exe 进程
     /// </summary>
     private static void StartBetterGiProcess(string? commandLine = null)
     {
-        if (string.IsNullOrEmpty(_betterGiExePath) || !File.Exists(_betterGiExePath))
-        {
-            Log("ERROR", $"找不到 BetterGI.exe: {_betterGiExePath}");
-            return;
-        }
-
-        // 使用传入的命令行或缓存的命令行
-        string cmdArgs = CleanCommandArgs(commandLine ?? _cachedCommand);
-        string filteredArgs = FilterCmdArguments(cmdArgs);
-        if (!string.Equals(cmdArgs, filteredArgs, StringComparison.Ordinal))
-        {
-            Log("WARN", $"启动参数包含 cmd 特殊字符，已过滤。原始参数: {FormatArgumentForLog(cmdArgs)} | 过滤后: {FormatArgumentForLog(filteredArgs)}");
-            cmdArgs = filteredArgs;
-        }
-
-        ProcessService.StartDetachedWithCmdStart(_betterGiExePath, cmdArgs, Log);
+        ProcessService.StartBetterGiProcess(
+            _betterGiExePath,
+            commandLine ?? _cachedCommand,
+            DangerousCmdArgumentChars,
+            Log);
     }
 
     /// <summary>
@@ -78,19 +49,6 @@ partial class Program
     private static long GetBetterGiMemoryMB()
     {
         return GetBetterGiSnapshot(includeCommandLine: false, includeMemory: true).MemoryMB;
-    }
-
-    /// <summary>
-    /// 过滤 cmd.exe /c start 参数中的高风险控制字符。
-    /// </summary>
-    private static string FilterCmdArguments(string args)
-    {
-        return CommandLineArguments.FilterDangerousCmdArguments(args, DangerousCmdArgumentChars);
-    }
-
-    private static string FormatArgumentForLog(string args)
-    {
-        return args.Replace("\r", "\\r").Replace("\n", "\\n");
     }
 
     /// <summary>

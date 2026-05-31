@@ -97,6 +97,36 @@ internal static class ProcessService
         }
     }
 
+    public static Mutex EnsureSingleInstance(
+        string mutexName,
+        int waitExitMs,
+        string currentUserSid,
+        string currentUserName,
+        Action<string, string> log)
+    {
+        var mutex = new Mutex(true, mutexName, out bool createdNew);
+
+        if (!createdNew)
+        {
+            log("WARN", "检测到已存在的守护进程，正在终止...");
+            using var currentProcess = Process.GetCurrentProcess();
+            TerminateProcessesByCurrentUser(
+                currentProcess.ProcessName,
+                "旧守护进程",
+                Environment.ProcessId,
+                waitExitMs,
+                currentUserSid,
+                currentUserName,
+                log);
+
+            mutex.Dispose();
+            mutex = new Mutex(true, mutexName, out _);
+        }
+
+        log("INFO", "单实例保护已生效");
+        return mutex;
+    }
+
     public static void TerminateProcessesByCurrentUser(
         string processName,
         string logPrefix,
@@ -155,11 +185,39 @@ internal static class ProcessService
         }
     }
 
+    public static bool StartBetterGiProcess(
+        string exePath,
+        string commandLine,
+        char[] dangerousCmdArgumentChars,
+        Action<string, string> log)
+    {
+        if (string.IsNullOrEmpty(exePath) || !File.Exists(exePath))
+        {
+            log("ERROR", $"找不到 BetterGI.exe: {exePath}");
+            return false;
+        }
+
+        string cmdArgs = CommandLineArguments.CleanCommandArgs(commandLine);
+        string filteredArgs = CommandLineArguments.FilterDangerousCmdArguments(cmdArgs, dangerousCmdArgumentChars);
+        if (!string.Equals(cmdArgs, filteredArgs, StringComparison.Ordinal))
+        {
+            log("WARN", $"启动参数包含 cmd 特殊字符，已过滤。原始参数: {FormatArgumentForLog(cmdArgs)} | 过滤后: {FormatArgumentForLog(filteredArgs)}");
+            cmdArgs = filteredArgs;
+        }
+
+        return StartDetachedWithCmdStart(exePath, cmdArgs, log);
+    }
+
     public static string BuildCmdStartArguments(string exePath, string commandArgs)
     {
         return string.IsNullOrEmpty(commandArgs)
             ? $"/c start \"\" \"{exePath}\""
             : $"/c start \"\" \"{exePath}\" {commandArgs}";
+    }
+
+    private static string FormatArgumentForLog(string args)
+    {
+        return args.Replace("\r", "\\r").Replace("\n", "\\n");
     }
 
     public static (bool anyRunning, List<string> runningNames) GetRunningOwnedProcesses(
