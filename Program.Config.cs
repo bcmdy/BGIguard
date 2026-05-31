@@ -2,6 +2,28 @@ namespace BGIguard;
 
 partial class Program
 {
+    private static string ConfigFilePath => Path.Combine(_exeDirectory, "BGIguard_config.json");
+
+    // 配置类
+    private class Config
+    {
+        public string BetterGiPath { get; set; } = "";
+        public int MemoryPercent { get; set; } = 85;
+        public int MonitorInterval { get; set; } = 5;
+        public int MissingCount { get; set; } = 6;
+        public bool SkipSetup { get; set; }
+        /// <summary>
+        /// BetterGI 进程内存阈值（MB），超过则重启。0 表示禁用进程级监控。
+        /// </summary>
+        public int BetterGiMemoryLimitMB { get; set; } = 4096;
+    }
+
+    // 配置缓存
+    private static (string betterGiPath, int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup, int betterGiMemoryLimitMB)? _configCache = null;
+    private static DateTime _configCacheLastWriteUtc = DateTime.MinValue;
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+
+
     /// <summary>
     /// 确保已设置可用的 BetterGI.exe 路径。
     /// </summary>
