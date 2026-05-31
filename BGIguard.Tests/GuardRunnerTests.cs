@@ -62,6 +62,48 @@ public sealed class GuardRunnerTests
         Assert.Equal("--new", restartCommand);
     }
 
+    [Fact]
+    public void Run_UsesSameConfigSnapshotForSleepAndRunOnce()
+    {
+        var firstConfig = CreateConfig(missingCountThreshold: 1) with { MonitorIntervalMs = 1234 };
+        var secondConfig = CreateConfig(missingCountThreshold: 2) with { MonitorIntervalMs = 9999 };
+        var state = new GuardRuntimeState();
+        int reloadCount = 0;
+        int sleptMs = 0;
+        int? observedThreshold = null;
+        int errors = 0;
+
+        var runner = new GuardRunner(
+            new GuardRunnerOptions(
+                "BetterGI",
+                new[] { "Game" },
+                "sid",
+                "user",
+                () => reloadCount++ == 0 ? firstConfig : throw new InvalidOperationException("stop"),
+                config =>
+                {
+                    observedThreshold = config.MissingCountThreshold;
+                    throw new InvalidOperationException("stop");
+                },
+                () => (true, new List<string> { "Game" }),
+                () => new SystemMemorySnapshot(1000, 100, 100, 0),
+                (_, _) => { },
+                ms => sleptMs = ms,
+                (level, _) =>
+                {
+                    if (level == "ERROR")
+                        errors++;
+                }),
+            state);
+
+        Assert.Throws<InvalidOperationException>(() => runner.Run());
+
+        Assert.Equal(1234, sleptMs);
+        Assert.Equal(1, observedThreshold);
+        Assert.Equal(2, reloadCount);
+        Assert.Equal(1, errors);
+    }
+
     private static GuardRunner CreateRunner(
         GuardRuntimeState state,
         GuardRunnerConfig config,

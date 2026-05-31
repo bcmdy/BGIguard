@@ -22,7 +22,7 @@ internal sealed class GuardRunner
 
             try
             {
-                RunOnce(_options.ReloadConfig());
+                RunOnce(config);
             }
             catch (Exception ex)
             {
