@@ -12,15 +12,10 @@ class Program
     private const string BetterGiExeName = "BetterGI.exe";
     private const int MaxLogFiles = 7;
     private const string LogFilePrefix = "BGI_guard";
-    private static readonly char[] DangerousCmdArgumentChars = { '&', '|', '<', '>', '^', '%', '\r', '\n' };
 
     private static string _exeDirectory = null!;
     private static string _betterGiExePath = "";
-    private static string _cachedCommand = "";
-    private static Mutex? _mutex;
     private static readonly string _version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "1.0";
-    private static readonly string _currentUserSid = CurrentUserService.GetCurrentUserSid();
-    private static readonly string _currentUserName = CurrentUserService.GetCurrentUserDisplayName();
     private static readonly string[] GameProcessNames = { "YuanShen", "GenshinImpact" };
 
     private static int _monitorIntervalMs = 5000;
@@ -31,11 +26,13 @@ class Program
 
     private static AppLogger? _logger;
     private static ConfigService? _configService;
+    private static BetterGiRuntimeService? _runtimeService;
 
     private static AppLogger LoggerStore => _logger ??= new AppLogger(_exeDirectory, LogFilePrefix, MaxLogFiles, GetDisplayVersion);
     private static string ConfigFilePath => Path.Combine(_exeDirectory, "BGIguard_config.json");
     private static ConfigService ConfigStore => _configService ??= new ConfigService(ConfigFilePath, Log);
     private static ConsoleUiService ConsoleUi => new(ConfigStore, ConfigFilePath, ClearConfigCache);
+    private static BetterGiRuntimeService RuntimeService => _runtimeService ??= new BetterGiRuntimeService(BetterGiExeName, ProcessWaitExitMs, RestartDelayMs, Log);
 
     static void Main(string[] args)
     {
@@ -65,41 +62,8 @@ class Program
         Log("INFO", $"BetterGI 路径: {_betterGiExePath}");
         Log("INFO", $"进程内存阈值: {(_betterGiMemoryLimitMB > 0 ? $"{_betterGiMemoryLimitMB}MB" : "已禁用")}");
 
-        HandleSingleInstance();
-
-        bool alreadyRunning = ProcessService.GetOwnedProcessSnapshot(
-            BetterGiExeName.Replace(".exe", ""),
-            _betterGiExePath,
-            _currentUserSid,
-            _currentUserName,
-            includeCommandLine: false,
-            includeMemory: false,
-            Log).Exists;
-
-        if (!alreadyRunning)
-        {
-            StartBetterGiProcess();
-        }
-        else
-        {
-            Log("INFO", "BetterGI.exe 已在运行中，跳过启动");
-        }
-
-        Thread.Sleep(500);
-        var initialSnapshot = ProcessService.GetOwnedProcessSnapshot(
-            BetterGiExeName.Replace(".exe", ""),
-            _betterGiExePath,
-            _currentUserSid,
-            _currentUserName,
-            includeCommandLine: true,
-            includeMemory: false,
-            Log);
-
-        if (initialSnapshot.Exists && initialSnapshot.CommandLine != null)
-        {
-            _cachedCommand = CommandLine.ExtractArgs(initialSnapshot.CommandLine);
-            Log("INFO", $"已缓存启动命令: {_cachedCommand}");
-        }
+        RuntimeService.EnsureSingleInstance();
+        RuntimeService.EnsureStartedAndCacheCommand(_betterGiExePath);
 
         RunGuardLoop();
     }
@@ -161,33 +125,14 @@ class Program
         ConfigStore.ClearCache();
     }
 
-    private static void HandleSingleInstance()
-    {
-        _mutex = ProcessService.EnsureSingleInstance(
-            "BGIguard_SingleInstance_Mutex",
-            ProcessWaitExitMs,
-            _currentUserSid,
-            _currentUserName,
-            Log);
-    }
-
-    private static void StartBetterGiProcess(string? commandLine = null)
-    {
-        ProcessService.StartBetterGiProcess(
-            _betterGiExePath,
-            commandLine ?? _cachedCommand,
-            DangerousCmdArgumentChars,
-            Log);
-    }
-
     private static void RunGuardLoop()
     {
         var runner = new GuardRunner(
             new GuardRunnerOptions(
                 BetterGiExeName.Replace(".exe", ""),
                 GameProcessNames,
-                _currentUserSid,
-                _currentUserName,
+                RuntimeService.CurrentUserSid,
+                RuntimeService.CurrentUserName,
                 ReloadGuardRunnerConfig,
                 GetBetterGiSnapshotForRunner,
                 GetRunningGameProcessesForRunner,
@@ -197,7 +142,7 @@ class Program
                 Log),
             new GuardRuntimeState
             {
-                CachedCommand = _cachedCommand
+                CachedCommand = RuntimeService.CachedCommand
             });
 
         runner.Run();
@@ -218,38 +163,20 @@ class Program
 
     private static BetterGiProcessSnapshot GetBetterGiSnapshotForRunner(GuardRunnerConfig config)
     {
-        return ProcessService.GetOwnedProcessSnapshot(
-            BetterGiExeName.Replace(".exe", ""),
+        return RuntimeService.GetBetterGiSnapshot(
             config.BetterGiExePath,
-            _currentUserSid,
-            _currentUserName,
             includeCommandLine: true,
-            includeMemory: config.BetterGiMemoryLimitMB > 0,
-            Log);
+            includeMemory: config.BetterGiMemoryLimitMB > 0);
     }
 
     private static (bool AnyRunning, List<string> RunningNames) GetRunningGameProcessesForRunner()
     {
-        return ProcessService.GetRunningOwnedProcesses(GameProcessNames, _currentUserSid, _currentUserName);
+        return RuntimeService.GetRunningGameProcesses(GameProcessNames);
     }
 
     private static void RestartBetterGiForRunner(GuardRunnerConfig config, string cachedCommand)
     {
-        ProcessService.TerminateProcessesByCurrentUser(
-            BetterGiExeName.Replace(".exe", ""),
-            "BetterGI.exe",
-            excludePid: null,
-            config.ProcessWaitExitMs,
-            _currentUserSid,
-            _currentUserName,
-            Log);
-
-        Thread.Sleep(config.RestartDelayMs);
-        ProcessService.StartBetterGiProcess(
-            config.BetterGiExePath,
-            cachedCommand,
-            DangerousCmdArgumentChars,
-            Log);
+        RuntimeService.RestartBetterGi(config, cachedCommand);
     }
 
     private static void HandleCommandLine(string[] args)
@@ -288,8 +215,8 @@ class Program
                 EnsureBetterGiPath();
 
                 Log("INFO", "BGIguard 启动成功");
-                HandleSingleInstance();
-                StartBetterGiProcess();
+                RuntimeService.EnsureSingleInstance();
+                RuntimeService.StartBetterGiProcess(_betterGiExePath);
                 RunGuardLoop();
                 break;
         }
