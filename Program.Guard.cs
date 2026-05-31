@@ -16,12 +16,19 @@ partial class Program
                 ApplyRuntimeConfig(LoadConfig());
 
                 // 1. 获取 BetterGI 进程信息、命令行和内存占用（单次遍历）
-                var betterGiSnapshot = GetBetterGiSnapshot(includeCommandLine: true, includeMemory: _betterGiMemoryLimitMB > 0);
+                var betterGiSnapshot = ProcessService.GetOwnedProcessSnapshot(
+                    BetterGiExeName.Replace(".exe", ""),
+                    _betterGiExePath,
+                    _currentUserSid,
+                    _currentUserName,
+                    includeCommandLine: true,
+                    includeMemory: _betterGiMemoryLimitMB > 0,
+                    Log);
                 bool betterGiRunning = betterGiSnapshot.Exists;
                 if (betterGiRunning && betterGiSnapshot.CommandLine != null)
                 {
-                    string extractedArgs = ExtractArgs(betterGiSnapshot.CommandLine);
-                    string cleanedArgs = CleanCommandArgs(extractedArgs);  // 必须先清理
+                    string extractedArgs = CommandLine.ExtractArgs(betterGiSnapshot.CommandLine);
+                    string cleanedArgs = CommandLineArguments.CleanCommandArgs(extractedArgs);  // 必须先清理
 
                     if (cleanedArgs != _cachedCommand)
                     {
@@ -34,7 +41,7 @@ partial class Program
                 }
 
                 // 2. 检查游戏进程
-                var (gameRunning, gameProcesses) = GetRunningGameProcesses();
+                var (gameRunning, gameProcesses) = ProcessService.GetRunningOwnedProcesses(GameProcessNames, _currentUserSid, _currentUserName);
 
                 // 3. 检查系统内存
                 var (totalMB, usedMB, physicalMB, virtualMB) = GetSystemMemory();

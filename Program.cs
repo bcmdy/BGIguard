@@ -119,10 +119,17 @@ partial class Program
 
         // 启动后立即缓存启动命令
         Thread.Sleep(500); // 等待进程启动
-        var (exists, initialCommand) = GetBetterGiInfo();
-        if (exists && initialCommand != null)
+        var initialSnapshot = ProcessService.GetOwnedProcessSnapshot(
+            BetterGiExeName.Replace(".exe", ""),
+            _betterGiExePath,
+            _currentUserSid,
+            _currentUserName,
+            includeCommandLine: true,
+            includeMemory: false,
+            Log);
+        if (initialSnapshot.Exists && initialSnapshot.CommandLine != null)
         {
-            _cachedCommand = ExtractArgs(initialCommand);
+            _cachedCommand = CommandLine.ExtractArgs(initialSnapshot.CommandLine);
             Log("INFO", $"已缓存启动命令: {_cachedCommand}");
         }
 
