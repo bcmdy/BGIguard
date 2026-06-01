@@ -55,7 +55,7 @@ internal sealed class GuardRunner
             _options.Log("WARN", $"[系统内存警告] 已用: {memorySnapshot.UsedMB}MB/{memorySnapshot.TotalMB}MB ({usedPercent}%) | 物理: {memorySnapshot.PhysicalMB}MB | 虚拟: {memorySnapshot.VirtualMB}MB");
         }
 
-        if (GuardService.ShouldRestartForProcessMemory(betterGiRunning, betterGiMemMB, config.BetterGiMemoryLimitMB))
+        if (GuardDecision.ShouldRestartForProcessMemory(betterGiRunning, betterGiMemMB, config.BetterGiMemoryLimitMB))
         {
             _options.Log("WARN", $"[进程内存超限] BetterGI 占用 {betterGiMemMB}MB > 阈值 {config.BetterGiMemoryLimitMB}MB，正在重启...");
             _options.RestartBetterGi(config, _state.CachedCommand);
@@ -111,7 +111,7 @@ internal sealed class GuardRunner
             _state.MissingCount++;
             _options.Log("WARN", $"BetterGI.exe 丢失 (第 {_state.MissingCount} 次)");
 
-            if (GuardService.ShouldRestartForMissingProcess(betterGiRunning, _state.MissingCount, config.MissingCountThreshold))
+            if (GuardDecision.ShouldRestartForMissingProcess(betterGiRunning, _state.MissingCount, config.MissingCountThreshold))
             {
                 _options.Log("INFO", "连续丢失达到阈值，正在重启...");
                 _options.RestartBetterGi(config, _state.CachedCommand);
@@ -127,7 +127,7 @@ internal sealed class GuardRunner
 
     private void HandleSystemMemory(GuardRunnerConfig config, long usedMB, long memoryLimitMB)
     {
-        if (!GuardService.ShouldRestartForSystemMemory(usedMB, memoryLimitMB))
+        if (!GuardDecision.ShouldRestartForSystemMemory(usedMB, memoryLimitMB))
             return;
 
         _options.Log("WARN", $"[系统内存超限] {usedMB}MB > {memoryLimitMB}MB ({config.MemoryPercent}%)");
@@ -142,7 +142,7 @@ internal sealed class GuardRunner
             _state.GameExitCount++;
             _options.Log("WARN", $"游戏已退出 (第 {_state.GameExitCount} 次)");
 
-            if (GuardService.ShouldRestartForGameExit(gameRunning, betterGiRunning, _state.GameExitCount, config.MissingCountThreshold))
+            if (GuardDecision.ShouldRestartForGameExit(gameRunning, betterGiRunning, _state.GameExitCount, config.MissingCountThreshold))
             {
                 _options.Log("INFO", $"游戏退出达到阈值，终止 BetterGI.exe (当前用户:{_options.CurrentUserName}, SID:{_options.CurrentUserSid})");
                 _options.RestartBetterGi(config, _state.CachedCommand);

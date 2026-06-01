@@ -43,7 +43,9 @@ git rm --cached BGIguard.csproj.lscache
 
 ## 优先级 P1：安全精简
 
-### 2. 删除 `GuardService`
+### 2. [x] 删除 `GuardService`
+
+完成状态：已删除 `GuardService.cs`，`GuardRunner.cs` 改为直接调用 `GuardDecision`，并同步更新 README 的项目结构说明。
 
 `GuardService.cs` 目前只是把方法原样转发给 `GuardDecision`：
 

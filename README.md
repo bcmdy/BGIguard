@@ -114,7 +114,6 @@ BGI_guardYYYYMMDD.log
 | 文件 | 作用 |
 | --- | --- |
 | `GuardRunner.cs` | 守护循环主体，负责每轮检测、状态日志、计数状态和触发重启。 |
-| `GuardService.cs` | 守护重启条件的服务封装。 |
 | `GuardDecision.cs` | 纯判断逻辑，便于单元测试重启条件。 |
 
 ### 项目与发布
