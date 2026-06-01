@@ -99,7 +99,6 @@ BGI_guardYYYYMMDD.log
 | `MemoryMonitor.cs` | 读取系统内存、物理内存和虚拟内存占用。 |
 | `CurrentUserService.cs` | 读取当前用户 SID 和显示名，用于多用户进程隔离。 |
 | `AppLogger.cs` | 当前日志实现，负责写入日志、控制台输出和旧日志清理。 |
-| `Logger.cs` | 日志相关兼容封装或辅助类型。 |
 
 ### 命令行与配置规则
 

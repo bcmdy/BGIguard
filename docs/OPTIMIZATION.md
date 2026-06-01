@@ -156,7 +156,9 @@ dotnet test
 
 ## 优先级 P2：结构收拢
 
-### 4. 合并 `AppLogger` 与 `Logger`
+### 4. [x] 合并 `AppLogger` 与 `Logger`
+
+完成状态：已将 `Logger.Write` 和旧日志清理逻辑合并进 `AppLogger`，并删除静态 `Logger.cs`。
 
 `AppLogger` 当前保存日志所需状态，实际写入逻辑在静态 `Logger.Write` 中。`Logger.Write` 因此需要接收很多状态参数：
 
