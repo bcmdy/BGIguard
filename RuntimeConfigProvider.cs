@@ -57,8 +57,7 @@ internal sealed class RuntimeConfigProvider
 
     private bool DetectBetterGiPath()
     {
-        RuntimeConfig config = _configStore.Load();
-        string resolvedPath = PathService.ResolveBetterGiPath(_exeDirectory, _betterGiExeName, config.BetterGiPath);
+        string resolvedPath = PathService.ResolveBetterGiPath(_exeDirectory, _betterGiExeName, Current.BetterGiPath);
         if (string.IsNullOrEmpty(resolvedPath))
             return false;
 

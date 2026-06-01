@@ -199,7 +199,9 @@ dotnet run
 - 程序目录生成 `BGI_guardYYYYMMDD.log`。
 - 旧日志清理逻辑仍生效。
 
-### 5. 减少 `RuntimeConfigProvider` 重复加载
+### 5. [x] 减少 `RuntimeConfigProvider` 重复加载
+
+完成状态：`DetectBetterGiPath` 已改为使用 `Current.BetterGiPath`，避免在 `Reload()` 后再次读取配置文件。
 
 `RuntimeConfigProvider.Reload()` 已经调用 `_configStore.Load()` 并更新 `Current`，但 `DetectBetterGiPath()` 内部又调用了一次 `_configStore.Load()`。
 
