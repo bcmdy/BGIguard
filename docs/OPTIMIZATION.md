@@ -13,7 +13,9 @@
 
 ## 优先级 P0：仓库卫生
 
-### 1. 移除 `BGIguard.csproj.lscache`
+### 1. [x] 移除 `BGIguard.csproj.lscache`
+
+完成状态：已从 Git 索引移除 `BGIguard.csproj.lscache`，并在 `.gitignore` 中加入 `*.lscache`。
 
 `BGIguard.csproj.lscache` 是自动生成的本地缓存文件，文件内容也标明会自动重新生成。它不应进入版本库。
 
@@ -296,4 +298,3 @@ dotnet test
 dotnet build
 .\build.ps1 -Version 5.0.0
 ```
-

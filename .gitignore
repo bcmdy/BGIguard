@@ -15,6 +15,7 @@ bld/
 
 # Visual Studio
 .vs/
+*.lscache
 *.suo
 *.user
 *.userosscache
