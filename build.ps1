@@ -8,7 +8,7 @@ param(
 
 $CONFIG = "Release"
 $SOLUTION = "BGIguard.sln"
-$PROJECT = "BGIguard.csproj"
+$PROJECT = "src/BGIguard/BGIguard.csproj"
 $PUBLISH_MODE = if ($SelfContained) { "self-contained" } else { "framework-dependent" }
 $SELF_CONTAINED_VALUE = if ($SelfContained) { "true" } else { "false" }
 
@@ -27,6 +27,12 @@ if (Test-Path $OutputDir) {
 }
 if (Test-Path "bin") {
     Remove-Item -Recurse -Force "bin"
+}
+if (Test-Path "src/BGIguard/bin") {
+    Remove-Item -Recurse -Force "src/BGIguard/bin"
+}
+if (Test-Path "tests/BGIguard.Tests/bin") {
+    Remove-Item -Recurse -Force "tests/BGIguard.Tests/bin"
 }
 
 # Build and test the solution before publishing.
@@ -80,6 +86,14 @@ if (Test-Path "bin") {
     Remove-Item -Recurse -Force "bin"
     Write-Host "Deleted bin directory" -ForegroundColor Yellow
 }
+if (Test-Path "src/BGIguard/bin") {
+    Remove-Item -Recurse -Force "src/BGIguard/bin"
+    Write-Host "Deleted src/BGIguard/bin directory" -ForegroundColor Yellow
+}
+if (Test-Path "tests/BGIguard.Tests/bin") {
+    Remove-Item -Recurse -Force "tests/BGIguard.Tests/bin"
+    Write-Host "Deleted tests/BGIguard.Tests/bin directory" -ForegroundColor Yellow
+}
 
 # Copy README and SPEC to output directory
 Write-Host ""
@@ -105,7 +119,7 @@ Write-Host ""
 Write-Host "Updating version in project files..." -ForegroundColor Yellow
 
 # Update BGIguard.csproj
-$csprojPath = "BGIguard.csproj"
+$csprojPath = "src/BGIguard/BGIguard.csproj"
 if (Test-Path $csprojPath) {
     $csprojContent = Get-Content $csprojPath -Raw
     $csprojContent = $csprojContent -replace '<Version>\d+\.\d+\.\d+</Version>', "<Version>$Version</Version>"

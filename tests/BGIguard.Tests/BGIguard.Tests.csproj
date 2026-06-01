@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\BGIguard.csproj" />
+    <ProjectReference Include="..\..\src\BGIguard\BGIguard.csproj" />
   </ItemGroup>
 
 </Project>

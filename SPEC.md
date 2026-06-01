@@ -201,13 +201,14 @@
 
 ```
 BGIguard/
-├── BGIguard.csproj
-├── Program.cs
+├── src/BGIguard/BGIguard.csproj
+├── src/BGIguard/Program.cs
+├── tests/BGIguard.Tests/BGIguard.Tests.csproj
 ├── SPEC.md
 ├── CHANGELOG.md
 ├── README.md
 ├── build.ps1
-└── Assets/icon.ico
+└── src/BGIguard/Assets/icon.ico
 ```
 
 ### 3.3 依赖项
@@ -223,7 +224,7 @@ BGIguard/
 ### 3.4 发布命令
 
 ```bash
-dotnet publish -c Release -p:PublishSingleFile=true --self-contained false -p:DebugType=none -p:DebugSymbols=false -o ./publish
+dotnet publish src/BGIguard/BGIguard.csproj -c Release -p:PublishSingleFile=true --self-contained false -p:DebugType=none -p:DebugSymbols=false -o ./publish
 ```
 
 或使用构建脚本:
@@ -233,7 +234,7 @@ dotnet publish -c Release -p:PublishSingleFile=true --self-contained false -p:De
 
 自包含发布命令:
 ```bash
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ./publish
+dotnet publish src/BGIguard/BGIguard.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ./publish
 ```
 
 ---

@@ -83,46 +83,46 @@ BGI_guardYYYYMMDD.log
 
 | 文件 | 作用 |
 | --- | --- |
-| `Program.cs` | 程序入口，负责初始化运行目录、标题、顶层命令分发和启动编排。 |
-| `GuardLoopService.cs` | 组装并运行 `GuardRunner`，把运行时服务、配置快照、内存读取和重启回调接到守护循环。 |
-| `BetterGiRuntimeService.cs` | 管理 BetterGI 运行时行为，包括单实例保护、启动、命令缓存、进程快照、游戏进程查询和重启适配。 |
-| `RuntimeConfigProvider.cs` | 负责运行时配置快照、BetterGI 路径解析和 `GuardRunnerConfig` 生成。 |
-| `ConsoleUiService.cs` | 负责控制台 UI，包括帮助文本、配置展示、设置菜单、配置重置和 BetterGI 路径输入交互。 |
+| `src/BGIguard/Program.cs` | 程序入口，负责初始化运行目录、标题、顶层命令分发和启动编排。 |
+| `src/BGIguard/GuardLoopService.cs` | 组装并运行 `GuardRunner`，把运行时服务、配置快照、内存读取和重启回调接到守护循环。 |
+| `src/BGIguard/BetterGiRuntimeService.cs` | 管理 BetterGI 运行时行为，包括单实例保护、启动、命令缓存、进程快照、游戏进程查询和重启适配。 |
+| `src/BGIguard/RuntimeConfigProvider.cs` | 负责运行时配置快照、BetterGI 路径解析和 `GuardRunnerConfig` 生成。 |
+| `src/BGIguard/ConsoleUiService.cs` | 负责控制台 UI，包括帮助文本、配置展示、设置菜单、配置重置和 BetterGI 路径输入交互。 |
 
 ### 核心服务
 
 | 文件 | 作用 |
 | --- | --- |
-| `ProcessService.cs` | 封装进程枚举、进程归属识别、进程终止、启动、命令行读取和 BetterGI 快照。 |
-| `ConfigService.cs` | 读取、规范化、缓存和保存 `BGIguard_config.json`。 |
-| `PathService.cs` | 验证可执行文件路径，并解析 BetterGI 的本地或配置路径。 |
-| `MemoryMonitor.cs` | 读取系统内存、物理内存和虚拟内存占用。 |
-| `CurrentUserService.cs` | 读取当前用户 SID 和显示名，用于多用户进程隔离。 |
-| `AppLogger.cs` | 当前日志实现，负责写入日志、控制台输出和旧日志清理。 |
+| `src/BGIguard/ProcessService.cs` | 封装进程枚举、进程归属识别、进程终止、启动、命令行读取和 BetterGI 快照。 |
+| `src/BGIguard/ConfigService.cs` | 读取、规范化、缓存和保存 `BGIguard_config.json`。 |
+| `src/BGIguard/PathService.cs` | 验证可执行文件路径，并解析 BetterGI 的本地或配置路径。 |
+| `src/BGIguard/MemoryMonitor.cs` | 读取系统内存、物理内存和虚拟内存占用。 |
+| `src/BGIguard/CurrentUserService.cs` | 读取当前用户 SID 和显示名，用于多用户进程隔离。 |
+| `src/BGIguard/AppLogger.cs` | 当前日志实现，负责写入日志、控制台输出和旧日志清理。 |
 
 ### 命令行与配置规则
 
 | 文件 | 作用 |
 | --- | --- |
-| `CommandLine.cs` | 从完整进程命令行中提取 BetterGI 启动参数。 |
-| `CommandLineArguments.cs` | 清理启动参数，并过滤 cmd 高风险字符。 |
-| `CommandLineConfigService.cs` | 实现 `set path/memory/interval/count/memlimit/skip` 等配置修改规则。 |
+| `src/BGIguard/CommandLine.cs` | 从完整进程命令行中提取 BetterGI 启动参数。 |
+| `src/BGIguard/CommandLineArguments.cs` | 清理启动参数，并过滤 cmd 高风险字符。 |
+| `src/BGIguard/CommandLineConfigService.cs` | 实现 `set path/memory/interval/count/memlimit/skip` 等配置修改规则。 |
 
 ### 守护判断
 
 | 文件 | 作用 |
 | --- | --- |
-| `GuardRunner.cs` | 守护循环主体，负责每轮检测、状态日志、计数状态和触发重启。 |
-| `GuardDecision.cs` | 纯判断逻辑，便于单元测试重启条件。 |
+| `src/BGIguard/GuardRunner.cs` | 守护循环主体，负责每轮检测、状态日志、计数状态和触发重启。 |
+| `src/BGIguard/GuardDecision.cs` | 纯判断逻辑，便于单元测试重启条件。 |
 
 ### 项目与发布
 
 | 文件 | 作用 |
 | --- | --- |
-| `BGIguard.csproj` | 主程序项目文件，定义目标框架、版本、图标和清单。 |
+| `src/BGIguard/BGIguard.csproj` | 主程序项目文件，定义目标框架、版本、图标和清单。 |
 | `BGIguard.sln` | Visual Studio / dotnet 解决方案文件。 |
-| `app.manifest` | Windows 应用清单。 |
-| `Assets/icon.ico` | 应用图标。 |
+| `src/BGIguard/app.manifest` | Windows 应用清单。 |
+| `src/BGIguard/Assets/icon.ico` | 应用图标。 |
 | `build.ps1` | 发布脚本，支持版本号、自包含发布和运行时参数。 |
 | `clean.ps1` | 清理脚本。 |
 | `global.json` | 固定或约束 .NET SDK 版本。 |
@@ -133,15 +133,15 @@ BGI_guardYYYYMMDD.log
 
 | 文件 | 作用 |
 | --- | --- |
-| `BGIguard.Tests/BGIguard.Tests.csproj` | 测试项目文件。 |
-| `BGIguard.Tests/ConfigServiceTests.cs` | 配置默认值、保存和读取测试。 |
-| `BGIguard.Tests/PathServiceTests.cs` | 路径验证和 BetterGI 路径解析测试。 |
-| `BGIguard.Tests/CommandLineArgumentsTests.cs` | 启动参数清理和过滤测试。 |
-| `BGIguard.Tests/CommandLineConfigServiceTests.cs` | 命令行配置修改规则测试。 |
-| `BGIguard.Tests/GuardDecisionTests.cs` | 守护判断逻辑测试。 |
-| `BGIguard.Tests/GuardRunnerTests.cs` | 守护循环单轮执行和关键分支测试。 |
-| `BGIguard.Tests/ProcessServiceTests.cs` | 进程启动参数拼接和用户匹配测试。 |
-| `BGIguard.Tests/GlobalUsings.cs` | 测试项目全局 using。 |
+| `tests/BGIguard.Tests/BGIguard.Tests.csproj` | 测试项目文件。 |
+| `tests/BGIguard.Tests/ConfigServiceTests.cs` | 配置默认值、保存和读取测试。 |
+| `tests/BGIguard.Tests/PathServiceTests.cs` | 路径验证和 BetterGI 路径解析测试。 |
+| `tests/BGIguard.Tests/CommandLineArgumentsTests.cs` | 启动参数清理和过滤测试。 |
+| `tests/BGIguard.Tests/CommandLineConfigServiceTests.cs` | 命令行配置修改规则测试。 |
+| `tests/BGIguard.Tests/GuardDecisionTests.cs` | 守护判断逻辑测试。 |
+| `tests/BGIguard.Tests/GuardRunnerTests.cs` | 守护循环单轮执行和关键分支测试。 |
+| `tests/BGIguard.Tests/ProcessServiceTests.cs` | 进程启动参数拼接和用户匹配测试。 |
+| `tests/BGIguard.Tests/GlobalUsings.cs` | 测试项目全局 using。 |
 
 ## 构建
 

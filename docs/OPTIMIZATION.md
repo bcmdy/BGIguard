@@ -232,16 +232,18 @@ dotnet test
 
 ## 优先级 P3：长期结构优化
 
-### 6. 调整源码目录结构
+### 6. [x] 调整源码目录结构
 
-当前主项目文件位于仓库根目录，测试项目位于 `BGIguard.Tests/`。由于 SDK 项目默认递归包含源码，主项目需要显式排除测试源码：
+完成状态：主项目已迁移到 `src/BGIguard`，测试项目已迁移到 `tests/BGIguard.Tests`，并同步更新解决方案、项目引用、构建脚本、清理脚本、CI 和文档路径。
+
+调整前主项目文件位于仓库根目录，测试项目位于 `BGIguard.Tests/`。由于 SDK 项目默认递归包含源码，主项目需要显式排除测试源码：
 
 ```xml
 <Compile Remove="BGIguard.Tests\**\*.cs" />
 <None Remove="BGIguard.Tests\**\*" />
 ```
 
-长期建议：
+当前结构：
 
 ```text
 src/
@@ -262,10 +264,10 @@ tests/
 
 - 中。会影响解决方案、项目引用、脚本、CI、文档路径。
 
-建议时机：
+完成说明：
 
-- 不作为当前小优化的一部分。
-- 等下一次版本整理或发布流程调整时一起做。
+- 本次已作为第六步完成。
+- 构建脚本、清理脚本、CI、解决方案和项目引用均已同步更新。
 
 ## 暂不建议立即修改
 
@@ -292,7 +294,7 @@ tests/
 3. 重构 `ConfigService.SaveSettings` 为基于 `RuntimeConfig` 的保存接口。
 4. 合并 `AppLogger` 和 `Logger`。
 5. 简化 `RuntimeConfigProvider` 的重复配置加载。
-6. 在后续版本整理时再考虑 `src/` + `tests/` 目录迁移。
+6. 已完成 `src/` + `tests/` 目录迁移。
 
 每完成一步后建议运行：
 

@@ -12,11 +12,7 @@
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
-
-  
   <ItemGroup>
-    <Compile Remove="BGIguard.Tests\**\*.cs" />
-    <None Remove="BGIguard.Tests\**\*" />
     <Resource Include="Assets\icon.ico" />
   </ItemGroup>
 

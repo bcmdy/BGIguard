@@ -11,7 +11,17 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
 # 需要删除的目录
-$removeDirs = @("bin", "publish")
+$removeDirs = @(
+    "bin",
+    "obj",
+    "publish",
+    "src/BGIguard/bin",
+    "src/BGIguard/obj",
+    "tests/BGIguard.Tests/bin",
+    "tests/BGIguard.Tests/obj",
+    "BGIguard.Tests/bin",
+    "BGIguard.Tests/obj"
+)
 
 Write-Host "Cleaning project output..." -ForegroundColor Yellow
 
