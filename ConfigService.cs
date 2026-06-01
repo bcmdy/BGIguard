@@ -45,17 +45,18 @@ internal sealed class ConfigService
         return normalized;
     }
 
-    public void SaveSettings(int memoryPercent, int monitorIntervalSeconds, int missingCountThreshold, bool skipSetup, int betterGiMemoryLimitMB)
+    public void SaveSettings(RuntimeConfig config)
     {
         ClearCache();
         RuntimeConfig existing = Load();
-        Save(new RuntimeConfig(
-            existing.BetterGiPath,
-            memoryPercent,
-            monitorIntervalSeconds,
-            missingCountThreshold,
-            skipSetup,
-            betterGiMemoryLimitMB));
+        Save(existing with
+        {
+            MemoryPercent = config.MemoryPercent,
+            MonitorIntervalSeconds = config.MonitorIntervalSeconds,
+            MissingCountThreshold = config.MissingCountThreshold,
+            SkipSetup = config.SkipSetup,
+            BetterGiMemoryLimitMB = config.BetterGiMemoryLimitMB
+        });
     }
 
     public bool SavePath(string path, out string normalizedPath)

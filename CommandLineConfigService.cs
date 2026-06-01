@@ -16,7 +16,7 @@ internal static class CommandLineConfigService
             return CommandLineConfigResult.Failure("错误: 内存阈值应在 1-100 之间");
 
         RuntimeConfig config = configStore.Load();
-        configStore.SaveSettings(memoryPercent, config.MonitorIntervalSeconds, config.MissingCountThreshold, config.SkipSetup, config.BetterGiMemoryLimitMB);
+        configStore.SaveSettings(config with { MemoryPercent = memoryPercent });
         return CommandLineConfigResult.Success($"内存阈值已设置为 {memoryPercent}%");
     }
 
@@ -26,7 +26,7 @@ internal static class CommandLineConfigService
             return CommandLineConfigResult.Failure("错误: 监控间隔应大于 0");
 
         RuntimeConfig config = configStore.Load();
-        configStore.SaveSettings(config.MemoryPercent, interval, config.MissingCountThreshold, config.SkipSetup, config.BetterGiMemoryLimitMB);
+        configStore.SaveSettings(config with { MonitorIntervalSeconds = interval });
         return CommandLineConfigResult.Success($"监控间隔已设置为 {interval} 秒");
     }
 
@@ -36,7 +36,7 @@ internal static class CommandLineConfigService
             return CommandLineConfigResult.Failure("错误: 丢失计数阈值应在 1-10 之间");
 
         RuntimeConfig config = configStore.Load();
-        configStore.SaveSettings(config.MemoryPercent, config.MonitorIntervalSeconds, count, config.SkipSetup, config.BetterGiMemoryLimitMB);
+        configStore.SaveSettings(config with { MissingCountThreshold = count });
         return CommandLineConfigResult.Success($"丢失计数阈值已设置为 {count} 次");
     }
 
@@ -50,7 +50,7 @@ internal static class CommandLineConfigService
     public static CommandLineConfigResult SetSkipSetup(ConfigService configStore, bool skipSetup)
     {
         RuntimeConfig config = configStore.Load();
-        configStore.SaveSettings(config.MemoryPercent, config.MonitorIntervalSeconds, config.MissingCountThreshold, skipSetup, config.BetterGiMemoryLimitMB);
+        configStore.SaveSettings(config with { SkipSetup = skipSetup });
         return CommandLineConfigResult.Success($"跳过设置界面已设置为: {skipSetup}");
     }
 
@@ -60,7 +60,7 @@ internal static class CommandLineConfigService
             return CommandLineConfigResult.Failure("错误: 进程内存阈值应为 >= 0 的整数 (0 表示禁用)");
 
         RuntimeConfig config = configStore.Load();
-        configStore.SaveSettings(config.MemoryPercent, config.MonitorIntervalSeconds, config.MissingCountThreshold, config.SkipSetup, limit);
+        configStore.SaveSettings(config with { BetterGiMemoryLimitMB = limit });
         return CommandLineConfigResult.Success(limit == 0
             ? "进程内存监控已禁用"
             : $"进程内存阈值已设置为 {limit}MB");

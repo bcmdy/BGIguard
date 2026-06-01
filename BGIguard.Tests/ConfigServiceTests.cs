@@ -38,7 +38,7 @@ public sealed class ConfigServiceTests
             var service = new ConfigService(configPath, (_, _) => { });
 
             Assert.True(service.SavePath(exePath, out string normalizedPath));
-            service.SaveSettings(72, 9, 4, true, 2048);
+            service.SaveSettings(new RuntimeConfig("", 72, 9, 4, true, 2048));
 
             RuntimeConfig config = service.Load();
 

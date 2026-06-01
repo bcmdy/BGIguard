@@ -76,7 +76,9 @@ git rm --cached BGIguard.csproj.lscache
 dotnet test
 ```
 
-### 3. 简化 `ConfigService.SaveSettings`
+### 3. [x] 简化 `ConfigService.SaveSettings`
+
+完成状态：`SaveSettings` 已改为接收 `RuntimeConfig`，调用点使用 `config with { ... }` 更新单个字段，测试已同步调整。
 
 当前 `SaveSettings` 接口如下：
 
