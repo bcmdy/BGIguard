@@ -88,6 +88,7 @@ public sealed class GuardRunnerTests
                 () => (true, new List<string> { "Game" }),
                 () => new SystemMemorySnapshot(1000, 100, 100, 0),
                 (_, _) => { },
+                () => DateTime.UtcNow,
                 (ms, _) =>
                 {
                     sleptMs = ms;
@@ -134,6 +135,7 @@ public sealed class GuardRunnerTests
                 () => (true, new List<string> { "Game" }),
                 () => new SystemMemorySnapshot(1000, 100, 100, 0),
                 (_, _) => { },
+                () => DateTime.UtcNow,
                 (_, _) => false,
                 (_, _) => { }),
             new GuardRuntimeState());
@@ -144,12 +146,57 @@ public sealed class GuardRunnerTests
         Assert.False(runOnceCalled);
     }
 
+    [Fact]
+    public void RunOnce_SkipsRestart_WhenRestartCooldownIsActive()
+    {
+        DateTime now = new DateTime(2026, 6, 7, 12, 0, 0, DateTimeKind.Utc);
+        GuardRunnerConfig config = CreateConfig(missingCountThreshold: 1) with { RestartCooldownSeconds = 60 };
+        var state = new GuardRuntimeState { LastRestartUtc = now.AddSeconds(-10) };
+        bool restarted = false;
+
+        var runner = CreateRunner(
+            state,
+            config,
+            betterGiSnapshot: new BetterGiProcessSnapshot(true, null, 5000),
+            gameRunning: true,
+            restart: (_, _) => restarted = true,
+            getUtcNow: () => now);
+
+        runner.RunOnce(config);
+
+        Assert.False(restarted);
+        Assert.Equal(now.AddSeconds(-10), state.LastRestartUtc);
+    }
+
+    [Fact]
+    public void RunOnce_Restarts_WhenRestartCooldownHasElapsed()
+    {
+        DateTime now = new DateTime(2026, 6, 7, 12, 0, 0, DateTimeKind.Utc);
+        GuardRunnerConfig config = CreateConfig(missingCountThreshold: 1) with { RestartCooldownSeconds = 60 };
+        var state = new GuardRuntimeState { LastRestartUtc = now.AddSeconds(-61) };
+        bool restarted = false;
+
+        var runner = CreateRunner(
+            state,
+            config,
+            betterGiSnapshot: new BetterGiProcessSnapshot(true, null, 5000),
+            gameRunning: true,
+            restart: (_, _) => restarted = true,
+            getUtcNow: () => now);
+
+        runner.RunOnce(config);
+
+        Assert.True(restarted);
+        Assert.Equal(now, state.LastRestartUtc);
+    }
+
     private static GuardRunner CreateRunner(
         GuardRuntimeState state,
         GuardRunnerConfig config,
         BetterGiProcessSnapshot betterGiSnapshot,
         bool gameRunning,
-        Action<GuardRunnerConfig, string> restart)
+        Action<GuardRunnerConfig, string> restart,
+        Func<DateTime>? getUtcNow = null)
     {
         return new GuardRunner(
             new GuardRunnerOptions(
@@ -162,6 +209,7 @@ public sealed class GuardRunnerTests
                 () => (gameRunning, gameRunning ? new List<string> { "Game" } : new List<string>()),
                 () => new SystemMemorySnapshot(1000, 100, 100, 0),
                 restart,
+                getUtcNow ?? (() => DateTime.UtcNow),
                 (_, _) => true,
                 (_, _) => { }),
             state);
@@ -176,6 +224,7 @@ public sealed class GuardRunnerTests
             MissingCountThreshold: missingCountThreshold,
             BetterGiMemoryLimitMB: 4096,
             ProcessWaitExitMs: 3000,
-            RestartDelayMs: 1000);
+            RestartDelayMs: 1000,
+            RestartCooldownSeconds: 60);
     }
 }

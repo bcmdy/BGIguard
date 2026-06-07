@@ -8,6 +8,7 @@ namespace BGIguard;
 class Program
 {
     private const int RestartDelayMs = 1000;
+    private const int RestartCooldownSeconds = 60;
     private const int ProcessWaitExitMs = 3000;
     private const string BetterGiExeName = "BetterGI.exe";
     private const int MaxLogFiles = 7;
@@ -30,7 +31,7 @@ class Program
     private static ConsoleUiService ConsoleUi => _consoleUiService ??= new ConsoleUiService(ConfigStore, ConfigFilePath, ClearConfigCache);
     private static BetterGiRuntimeService RuntimeService => _runtimeService ??= new BetterGiRuntimeService(BetterGiExeName, ProcessWaitExitMs, RestartDelayMs, Log);
     private static RuntimeConfigProvider RuntimeConfigProvider => _runtimeConfigProvider ??= new RuntimeConfigProvider(ConfigStore, _exeDirectory, BetterGiExeName, ConsoleUi);
-    private static GuardLoopService GuardLoop => _guardLoopService ??= new GuardLoopService(BetterGiExeName, GameProcessNames, RuntimeConfigProvider, RuntimeService, ProcessWaitExitMs, RestartDelayMs, Log);
+    private static GuardLoopService GuardLoop => _guardLoopService ??= new GuardLoopService(BetterGiExeName, GameProcessNames, RuntimeConfigProvider, RuntimeService, ProcessWaitExitMs, RestartDelayMs, RestartCooldownSeconds, Log);
 
     static void Main(string[] args)
     {

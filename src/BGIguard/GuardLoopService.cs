@@ -8,6 +8,7 @@ internal sealed class GuardLoopService
     private readonly BetterGiRuntimeService _runtimeService;
     private readonly int _processWaitExitMs;
     private readonly int _restartDelayMs;
+    private readonly int _restartCooldownSeconds;
     private readonly Action<string, string> _log;
 
     public GuardLoopService(
@@ -17,6 +18,7 @@ internal sealed class GuardLoopService
         BetterGiRuntimeService runtimeService,
         int processWaitExitMs,
         int restartDelayMs,
+        int restartCooldownSeconds,
         Action<string, string> log)
     {
         _betterGiProcessName = betterGiExeName.Replace(".exe", "");
@@ -25,6 +27,7 @@ internal sealed class GuardLoopService
         _runtimeService = runtimeService;
         _processWaitExitMs = processWaitExitMs;
         _restartDelayMs = restartDelayMs;
+        _restartCooldownSeconds = restartCooldownSeconds;
         _log = log;
     }
 
@@ -41,6 +44,7 @@ internal sealed class GuardLoopService
                 GetRunningGameProcesses,
                 () => MemoryMonitor.GetSystemMemory(_log),
                 _runtimeService.RestartBetterGi,
+                () => DateTime.UtcNow,
                 Sleep,
                 _log),
             new GuardRuntimeState
@@ -58,7 +62,7 @@ internal sealed class GuardLoopService
 
     private GuardRunnerConfig ReloadGuardRunnerConfig()
     {
-        return _configProvider.ReloadGuardRunnerConfig(_processWaitExitMs, _restartDelayMs);
+        return _configProvider.ReloadGuardRunnerConfig(_processWaitExitMs, _restartDelayMs, _restartCooldownSeconds);
     }
 
     private BetterGiProcessSnapshot GetBetterGiSnapshot(GuardRunnerConfig config)

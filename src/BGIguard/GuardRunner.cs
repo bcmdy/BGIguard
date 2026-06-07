@@ -59,9 +59,8 @@ internal sealed class GuardRunner
         if (GuardDecision.ShouldRestartForProcessMemory(betterGiRunning, betterGiMemMB, config.BetterGiMemoryLimitMB))
         {
             _options.Log("WARN", $"[进程内存超限] BetterGI 占用 {betterGiMemMB}MB > 阈值 {config.BetterGiMemoryLimitMB}MB，正在重启...");
-            _options.RestartBetterGi(config, _state.CachedCommand);
-            _options.Log("INFO", "进程内存超限后已重启");
-            _state.MissingCount = 0;
+            if (TryRestartBetterGi(config, "进程内存超限"))
+                _state.MissingCount = 0;
             return;
         }
 
@@ -115,8 +114,8 @@ internal sealed class GuardRunner
             if (GuardDecision.ShouldRestartForMissingProcess(betterGiRunning, _state.MissingCount, config.MissingCountThreshold))
             {
                 _options.Log("INFO", "连续丢失达到阈值，正在重启...");
-                _options.RestartBetterGi(config, _state.CachedCommand);
-                _state.MissingCount = 0;
+                if (TryRestartBetterGi(config, "BetterGI 连续丢失"))
+                    _state.MissingCount = 0;
             }
         }
         else if (_state.MissingCount > 0)
@@ -132,8 +131,7 @@ internal sealed class GuardRunner
             return;
 
         _options.Log("WARN", $"[系统内存超限] {usedMB}MB > {memoryLimitMB}MB ({config.MemoryPercent}%)");
-        _options.RestartBetterGi(config, _state.CachedCommand);
-        _options.Log("INFO", "系统内存超限后已重启");
+        TryRestartBetterGi(config, "系统内存超限");
     }
 
     private void HandleGameExit(GuardRunnerConfig config, bool gameRunning, bool betterGiRunning)
@@ -146,8 +144,8 @@ internal sealed class GuardRunner
             if (GuardDecision.ShouldRestartForGameExit(gameRunning, betterGiRunning, _state.GameExitCount, config.MissingCountThreshold))
             {
                 _options.Log("INFO", $"游戏退出达到阈值，终止 BetterGI.exe (当前用户:{_options.CurrentUserName}, SID:{_options.CurrentUserSid})");
-                _options.RestartBetterGi(config, _state.CachedCommand);
-                _state.GameExitCount = 0;
+                if (TryRestartBetterGi(config, "游戏退出"))
+                    _state.GameExitCount = 0;
             }
         }
         else if (gameRunning && _state.GameExitCount > 0)
@@ -156,6 +154,24 @@ internal sealed class GuardRunner
             _state.GameExitCount = 0;
         }
     }
+
+    private bool TryRestartBetterGi(GuardRunnerConfig config, string reason)
+    {
+        DateTime now = _options.GetUtcNow();
+        if (config.RestartCooldownSeconds > 0 &&
+            _state.LastRestartUtc != DateTime.MinValue &&
+            now - _state.LastRestartUtc < TimeSpan.FromSeconds(config.RestartCooldownSeconds))
+        {
+            int remainingSeconds = Math.Max(1, config.RestartCooldownSeconds - (int)(now - _state.LastRestartUtc).TotalSeconds);
+            _options.Log("WARN", $"{reason} 触发重启，但仍在冷却中，剩余约 {remainingSeconds} 秒");
+            return false;
+        }
+
+        _options.RestartBetterGi(config, _state.CachedCommand);
+        _state.LastRestartUtc = now;
+        _options.Log("INFO", $"{reason} 后已重启");
+        return true;
+    }
 }
 
 internal sealed class GuardRuntimeState
@@ -163,6 +179,7 @@ internal sealed class GuardRuntimeState
     public string CachedCommand { get; set; } = "";
     public int MissingCount { get; set; }
     public int GameExitCount { get; set; }
+    public DateTime LastRestartUtc { get; set; } = DateTime.MinValue;
 }
 
 internal sealed record GuardRunnerOptions(
@@ -175,6 +192,7 @@ internal sealed record GuardRunnerOptions(
     Func<(bool AnyRunning, List<string> RunningNames)> GetRunningGameProcesses,
     Func<SystemMemorySnapshot> GetSystemMemory,
     Action<GuardRunnerConfig, string> RestartBetterGi,
+    Func<DateTime> GetUtcNow,
     Func<int, CancellationToken, bool> Sleep,
     Action<string, string> Log);
 
@@ -185,4 +203,5 @@ internal sealed record GuardRunnerConfig(
     int MissingCountThreshold,
     int BetterGiMemoryLimitMB,
     int ProcessWaitExitMs,
-    int RestartDelayMs);
+    int RestartDelayMs,
+    int RestartCooldownSeconds);

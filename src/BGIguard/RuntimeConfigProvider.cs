@@ -40,7 +40,7 @@ internal sealed class RuntimeConfigProvider
         }
     }
 
-    public GuardRunnerConfig ReloadGuardRunnerConfig(int processWaitExitMs, int restartDelayMs)
+    public GuardRunnerConfig ReloadGuardRunnerConfig(int processWaitExitMs, int restartDelayMs, int restartCooldownSeconds)
     {
         RuntimeConfig config = Reload();
         EnsureBetterGiPath();
@@ -52,7 +52,8 @@ internal sealed class RuntimeConfigProvider
             config.MissingCountThreshold,
             config.BetterGiMemoryLimitMB,
             processWaitExitMs,
-            restartDelayMs);
+            restartDelayMs,
+            restartCooldownSeconds);
     }
 
     private bool DetectBetterGiPath()
