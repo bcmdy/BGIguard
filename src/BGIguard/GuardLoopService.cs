@@ -28,7 +28,7 @@ internal sealed class GuardLoopService
         _log = log;
     }
 
-    public void Run()
+    public void Run(CancellationToken cancellationToken = default)
     {
         var runner = new GuardRunner(
             new GuardRunnerOptions(
@@ -41,14 +41,19 @@ internal sealed class GuardLoopService
                 GetRunningGameProcesses,
                 () => MemoryMonitor.GetSystemMemory(_log),
                 _runtimeService.RestartBetterGi,
-                Thread.Sleep,
+                Sleep,
                 _log),
             new GuardRuntimeState
             {
                 CachedCommand = _runtimeService.CachedCommand
             });
 
-        runner.Run();
+        runner.Run(cancellationToken);
+    }
+
+    private static bool Sleep(int millisecondsTimeout, CancellationToken cancellationToken)
+    {
+        return !cancellationToken.WaitHandle.WaitOne(millisecondsTimeout);
     }
 
     private GuardRunnerConfig ReloadGuardRunnerConfig()

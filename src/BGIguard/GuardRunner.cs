@@ -11,14 +11,15 @@ internal sealed class GuardRunner
         _state = state;
     }
 
-    public void Run()
+    public void Run(CancellationToken cancellationToken = default)
     {
         _options.Log("INFO", "进入守护监控循环");
 
-        while (true)
+        while (!cancellationToken.IsCancellationRequested)
         {
             GuardRunnerConfig config = _options.ReloadConfig();
-            _options.Sleep(config.MonitorIntervalMs);
+            if (!_options.Sleep(config.MonitorIntervalMs, cancellationToken))
+                break;
 
             try
             {
@@ -174,7 +175,7 @@ internal sealed record GuardRunnerOptions(
     Func<(bool AnyRunning, List<string> RunningNames)> GetRunningGameProcesses,
     Func<SystemMemorySnapshot> GetSystemMemory,
     Action<GuardRunnerConfig, string> RestartBetterGi,
-    Action<int> Sleep,
+    Func<int, CancellationToken, bool> Sleep,
     Action<string, string> Log);
 
 internal sealed record GuardRunnerConfig(

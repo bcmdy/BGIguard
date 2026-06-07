@@ -88,7 +88,11 @@ public sealed class GuardRunnerTests
                 () => (true, new List<string> { "Game" }),
                 () => new SystemMemorySnapshot(1000, 100, 100, 0),
                 (_, _) => { },
-                ms => sleptMs = ms,
+                (ms, _) =>
+                {
+                    sleptMs = ms;
+                    return true;
+                },
                 (level, _) =>
                 {
                     if (level == "ERROR")
@@ -102,6 +106,42 @@ public sealed class GuardRunnerTests
         Assert.Equal(1, observedThreshold);
         Assert.Equal(2, reloadCount);
         Assert.Equal(1, errors);
+    }
+
+    [Fact]
+    public void Run_StopsWithoutRunOnce_WhenSleepIsCancelled()
+    {
+        GuardRunnerConfig config = CreateConfig(missingCountThreshold: 1);
+        int reloadCount = 0;
+        bool runOnceCalled = false;
+
+        var runner = new GuardRunner(
+            new GuardRunnerOptions(
+                "BetterGI",
+                new[] { "Game" },
+                "sid",
+                "user",
+                () =>
+                {
+                    reloadCount++;
+                    return config;
+                },
+                _ =>
+                {
+                    runOnceCalled = true;
+                    return default;
+                },
+                () => (true, new List<string> { "Game" }),
+                () => new SystemMemorySnapshot(1000, 100, 100, 0),
+                (_, _) => { },
+                (_, _) => false,
+                (_, _) => { }),
+            new GuardRuntimeState());
+
+        runner.Run();
+
+        Assert.Equal(1, reloadCount);
+        Assert.False(runOnceCalled);
     }
 
     private static GuardRunner CreateRunner(
@@ -122,7 +162,7 @@ public sealed class GuardRunnerTests
                 () => (gameRunning, gameRunning ? new List<string> { "Game" } : new List<string>()),
                 () => new SystemMemorySnapshot(1000, 100, 100, 0),
                 restart,
-                _ => { },
+                (_, _) => true,
                 (_, _) => { }),
             state);
     }

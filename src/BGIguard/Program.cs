@@ -35,6 +35,14 @@ class Program
     static void Main(string[] args)
     {
         _exeDirectory = AppDomain.CurrentDomain.BaseDirectory;
+        using var shutdown = new CancellationTokenSource();
+
+        Console.CancelKeyPress += (_, eventArgs) =>
+        {
+            eventArgs.Cancel = true;
+            Log("INFO", "收到退出请求，正在停止守护循环...");
+            shutdown.Cancel();
+        };
 
         string version = GetDisplayVersion();
         Console.Title = $"BetterGI 进程守护 v{version} By:Bcmdy";
@@ -42,7 +50,7 @@ class Program
         // 先处理 help/reset/set show 等命令，避免被 BetterGI 路径检测阻塞。
         if (args.Length > 0)
         {
-            HandleCommandLine(args);
+            HandleCommandLine(args, shutdown.Token);
             return;
         }
 
@@ -53,7 +61,7 @@ class Program
             PrepareRuntime();
         }
 
-        StartGuard();
+        StartGuard(shutdown.Token);
     }
 
     private static string GetDisplayVersion()
@@ -79,7 +87,7 @@ class Program
         RuntimeConfigProvider.EnsureBetterGiPath();
     }
 
-    private static void StartGuard(bool ensureStarted = true)
+    private static void StartGuard(CancellationToken cancellationToken = default, bool ensureStarted = true)
     {
         Log("INFO", "BGIguard 启动成功");
         Log("INFO", $"BetterGI 路径: {RuntimeConfigProvider.BetterGiExePath}");
@@ -95,10 +103,10 @@ class Program
             RuntimeService.StartBetterGiProcess(RuntimeConfigProvider.BetterGiExePath);
         }
 
-        GuardLoop.Run();
+        GuardLoop.Run(cancellationToken);
     }
 
-    private static void HandleCommandLine(string[] args)
+    private static void HandleCommandLine(string[] args, CancellationToken cancellationToken = default)
     {
         string command = args[0].ToLower();
 
@@ -130,7 +138,7 @@ class Program
 
             default:
                 PrepareRuntime();
-                StartGuard(ensureStarted: false);
+                StartGuard(cancellationToken, ensureStarted: false);
                 break;
         }
     }
