@@ -29,6 +29,16 @@ public sealed class ProcessServiceTests
     }
 
     [Fact]
+    public void BuildCmdStartArguments_PreservesQuotedArguments()
+    {
+        string args = ProcessService.BuildCmdStartArguments(
+            @"C:\Program Files\App\Target.exe",
+            "--config \"C:\\Users\\Name With Space\\config.json\"");
+
+        Assert.Equal("/c start \"\" \"C:\\Program Files\\App\\Target.exe\" --config \"C:\\Users\\Name With Space\\config.json\"", args);
+    }
+
+    [Fact]
     public void BuildCmdStartArguments_OmitsTrailingArgumentsWhenEmpty()
     {
         string args = ProcessService.BuildCmdStartArguments(@"C:\App\Target.exe", "");

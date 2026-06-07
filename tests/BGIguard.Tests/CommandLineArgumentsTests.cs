@@ -37,4 +37,24 @@ public sealed class CommandLineArgumentsTests
 
         Assert.Equal("--safe  del TEMP", filtered);
     }
+
+    [Fact]
+    public void FilterDangerousCmdArguments_PreservesSpacesQuotesAndBackslashes()
+    {
+        char[] dangerous = ['&', '|', '<', '>', '^', '%', '\r', '\n'];
+
+        string filtered = CommandLineArguments.FilterDangerousCmdArguments("--path \"C:\\Program Files\\BetterGI\\cfg.json\"", dangerous);
+
+        Assert.Equal("--path \"C:\\Program Files\\BetterGI\\cfg.json\"", filtered);
+    }
+
+    [Fact]
+    public void FilterDangerousCmdArguments_RemovesNewLinesAndRedirectionCharacters()
+    {
+        char[] dangerous = ['&', '|', '<', '>', '^', '%', '\r', '\n'];
+
+        string filtered = CommandLineArguments.FilterDangerousCmdArguments("--ok\r\n> out.txt | more", dangerous);
+
+        Assert.Equal("--ok out.txt  more", filtered);
+    }
 }
