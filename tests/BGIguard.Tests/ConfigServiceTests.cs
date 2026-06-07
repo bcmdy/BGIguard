@@ -49,6 +49,7 @@ public sealed class ConfigServiceTests
             Assert.Equal(4, config.MissingCountThreshold);
             Assert.True(config.SkipSetup);
             Assert.Equal(2048, config.BetterGiMemoryLimitMB);
+            Assert.Contains("\"Version\": 1", File.ReadAllText(configPath));
         }
         finally
         {
@@ -81,6 +82,43 @@ public sealed class ConfigServiceTests
             Assert.Equal(5, config.MonitorIntervalSeconds);
             Assert.Equal(6, config.MissingCountThreshold);
             Assert.Equal(4096, config.BetterGiMemoryLimitMB);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Load_OldConfigWithoutVersion_RemainsCompatibleAndSaveWritesVersion()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "BGIguard.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        string configPath = Path.Combine(tempDir, "BGIguard_config.json");
+        File.WriteAllText(configPath, """
+            {
+              "MemoryPercent": 70,
+              "MonitorInterval": 8,
+              "MissingCount": 3,
+              "SkipSetup": true,
+              "BetterGiMemoryLimitMB": 1024
+            }
+            """);
+
+        try
+        {
+            var service = new ConfigService(configPath, (_, _) => { });
+
+            RuntimeConfig config = service.Load();
+            service.SaveSettings(config);
+
+            string json = File.ReadAllText(configPath);
+            Assert.Equal(70, config.MemoryPercent);
+            Assert.Equal(8, config.MonitorIntervalSeconds);
+            Assert.Equal(3, config.MissingCountThreshold);
+            Assert.True(config.SkipSetup);
+            Assert.Equal(1024, config.BetterGiMemoryLimitMB);
+            Assert.Contains("\"Version\": 1", json);
         }
         finally
         {

@@ -6,6 +6,7 @@ internal sealed class ConfigService
     public const int DefaultMonitorIntervalSeconds = 5;
     public const int DefaultMissingCountThreshold = 6;
     public const int DefaultBetterGiMemoryLimitMB = 4096;
+    public const int CurrentConfigVersion = 1;
 
     private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private readonly string _configFilePath;
@@ -134,6 +135,7 @@ internal sealed class ConfigService
 
     private sealed class ConfigFileModel
     {
+        public int Version { get; set; } = CurrentConfigVersion;
         public string BetterGiPath { get; set; } = "";
         public int MemoryPercent { get; set; } = DefaultMemoryPercent;
         public int MonitorInterval { get; set; } = DefaultMonitorIntervalSeconds;
@@ -150,6 +152,7 @@ internal sealed class ConfigService
         {
             return new ConfigFileModel
             {
+                Version = CurrentConfigVersion,
                 BetterGiPath = config.BetterGiPath,
                 MemoryPercent = config.MemoryPercent,
                 MonitorInterval = config.MonitorIntervalSeconds,
