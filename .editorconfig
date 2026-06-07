@@ -1,0 +1,17 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{cs,csproj,sln,ps1,json,yml,yaml,xml}]
+indent_style = space
+indent_size = 4
+
+[*.sln]
+indent_style = tab

@@ -43,9 +43,9 @@ internal sealed class AppLogger
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"鍐欏叆鏃ュ織澶辫触: {ex.Message}");
-                Console.WriteLine($"鏃ュ織鐩綍: {_exeDirectory}");
-                Console.WriteLine("璇风‘璁ょ▼搴忔墍鍦ㄧ洰褰曞叿鏈夊啓鍏ユ潈闄愶紝閬垮厤鏀惧湪 Program Files 绛夊彈淇濇姢鐩綍锛屾垨浠ョ鐞嗗憳韬唤杩愯銆?");
+                Console.WriteLine($"写入日志失败: {ex.Message}");
+                Console.WriteLine($"日志目录: {_exeDirectory}");
+                Console.WriteLine("请确认程序所在目录具有写入权限。建议将程序移动到用户可写目录，或以管理员身份运行。");
             }
         }
     }
@@ -66,7 +66,7 @@ internal sealed class AppLogger
         }
         catch (Exception ex)
         {
-            try { Console.WriteLine($"娓呯悊鏃ф棩蹇楀け璐? {ex.Message}"); } catch { }
+            try { Console.WriteLine($"清理旧日志失败: {ex.Message}"); } catch { }
         }
     }
 }
