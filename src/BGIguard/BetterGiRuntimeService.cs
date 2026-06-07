@@ -10,6 +10,8 @@ internal sealed class BetterGiRuntimeService
     private readonly int _restartDelayMs;
     private readonly string _currentUserSid;
     private readonly string _currentUserName;
+    private readonly IProcessOperations _processOperations;
+    private readonly Action<int> _sleep;
     private readonly Action<string, string> _log;
     private Mutex? _mutex;
 
@@ -18,14 +20,37 @@ internal sealed class BetterGiRuntimeService
         int processWaitExitMs,
         int restartDelayMs,
         Action<string, string> log)
+        : this(
+            betterGiExeName,
+            processWaitExitMs,
+            restartDelayMs,
+            log,
+            new WindowsProcessOperations(),
+            CurrentUserService.GetCurrentUserSid(),
+            CurrentUserService.GetCurrentUserDisplayName(),
+            Thread.Sleep)
+    {
+    }
+
+    internal BetterGiRuntimeService(
+        string betterGiExeName,
+        int processWaitExitMs,
+        int restartDelayMs,
+        Action<string, string> log,
+        IProcessOperations processOperations,
+        string currentUserSid,
+        string currentUserName,
+        Action<int> sleep)
     {
         _betterGiExeName = betterGiExeName;
         _betterGiProcessName = betterGiExeName.Replace(".exe", "");
         _processWaitExitMs = processWaitExitMs;
         _restartDelayMs = restartDelayMs;
         _log = log;
-        _currentUserSid = CurrentUserService.GetCurrentUserSid();
-        _currentUserName = CurrentUserService.GetCurrentUserDisplayName();
+        _processOperations = processOperations;
+        _currentUserSid = currentUserSid;
+        _currentUserName = currentUserName;
+        _sleep = sleep;
     }
 
     public string CurrentUserSid => _currentUserSid;
@@ -34,7 +59,7 @@ internal sealed class BetterGiRuntimeService
 
     public void EnsureSingleInstance()
     {
-        _mutex = ProcessService.EnsureSingleInstance(
+        _mutex = _processOperations.EnsureSingleInstance(
             "BGIguard_SingleInstance_Mutex",
             _processWaitExitMs,
             _currentUserSid,
@@ -53,7 +78,7 @@ internal sealed class BetterGiRuntimeService
             _log("INFO", "BetterGI.exe 已在运行中，跳过启动");
         }
 
-        Thread.Sleep(500);
+        _sleep(500);
         BetterGiProcessSnapshot initialSnapshot = GetBetterGiSnapshot(exePath, includeCommandLine: true, includeMemory: false);
         if (initialSnapshot.Exists && initialSnapshot.CommandLine != null)
         {
@@ -64,7 +89,7 @@ internal sealed class BetterGiRuntimeService
 
     public void StartBetterGiProcess(string exePath, string? commandLine = null)
     {
-        ProcessService.StartBetterGiProcess(
+        _processOperations.StartBetterGiProcess(
             exePath,
             commandLine ?? CachedCommand,
             DangerousCmdArgumentChars,
@@ -81,7 +106,7 @@ internal sealed class BetterGiRuntimeService
         bool includeCommandLine,
         bool includeMemory)
     {
-        return ProcessService.GetOwnedProcessSnapshot(
+        return _processOperations.GetOwnedProcessSnapshot(
             _betterGiProcessName,
             exePath,
             _currentUserSid,
@@ -93,12 +118,12 @@ internal sealed class BetterGiRuntimeService
 
     public (bool AnyRunning, List<string> RunningNames) GetRunningGameProcesses(IReadOnlyCollection<string> gameProcessNames)
     {
-        return ProcessService.GetRunningOwnedProcesses(gameProcessNames, _currentUserSid, _currentUserName);
+        return _processOperations.GetRunningOwnedProcesses(gameProcessNames, _currentUserSid, _currentUserName);
     }
 
     public void RestartBetterGi(GuardRunnerConfig config, string cachedCommand)
     {
-        ProcessService.TerminateProcessesByCurrentUser(
+        _processOperations.TerminateProcessesByCurrentUser(
             _betterGiProcessName,
             _betterGiExeName,
             excludePid: null,
@@ -107,7 +132,7 @@ internal sealed class BetterGiRuntimeService
             _currentUserName,
             _log);
 
-        Thread.Sleep(_restartDelayMs);
+        _sleep(_restartDelayMs);
         StartBetterGiProcess(config.BetterGiExePath, cachedCommand);
     }
 }
