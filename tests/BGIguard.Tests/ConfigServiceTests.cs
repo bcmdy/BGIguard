@@ -90,6 +90,33 @@ public sealed class ConfigServiceTests
     }
 
     [Fact]
+    public void Load_ReturnsDefaultsAndLogsError_WhenJsonIsInvalid()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "BGIguard.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        string configPath = Path.Combine(tempDir, "BGIguard_config.json");
+        File.WriteAllText(configPath, "{ invalid json");
+        var logs = new List<(string Level, string Message)>();
+
+        try
+        {
+            var service = new ConfigService(configPath, (level, message) => logs.Add((level, message)));
+
+            RuntimeConfig config = service.Load();
+
+            Assert.Equal(ConfigService.DefaultMemoryPercent, config.MemoryPercent);
+            Assert.Equal(ConfigService.DefaultMonitorIntervalSeconds, config.MonitorIntervalSeconds);
+            Assert.Equal(ConfigService.DefaultMissingCountThreshold, config.MissingCountThreshold);
+            Assert.Equal(ConfigService.DefaultBetterGiMemoryLimitMB, config.BetterGiMemoryLimitMB);
+            Assert.Contains(logs, log => log.Level == "ERROR" && log.Message.Contains("加载配置文件失败"));
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Load_OldConfigWithoutVersion_RemainsCompatibleAndSaveWritesVersion()
     {
         string tempDir = Path.Combine(Path.GetTempPath(), "BGIguard.Tests", Guid.NewGuid().ToString("N"));
