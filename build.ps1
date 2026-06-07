@@ -3,7 +3,8 @@ param(
     [string]$Version = "5.0.0",
     [switch]$SelfContained,
     [string]$Runtime = "win-x64",
-    [string]$OutputDir = "publish"
+    [string]$OutputDir = "publish",
+    [switch]$SkipSelfCheck
 )
 
 $CONFIG = "Release"
@@ -11,6 +12,148 @@ $SOLUTION = "BGIguard.sln"
 $PROJECT = "src/BGIguard/BGIguard.csproj"
 $PUBLISH_MODE = if ($SelfContained) { "self-contained" } else { "framework-dependent" }
 $SELF_CONTAINED_VALUE = if ($SelfContained) { "true" } else { "false" }
+
+function Fail-Build {
+    param([string]$Message)
+
+    Write-Host ""
+    Write-Host "[ERROR] $Message" -ForegroundColor Red
+    exit 1
+}
+
+function Assert-FileExists {
+    param(
+        [string]$Path,
+        [string]$Description
+    )
+
+    if (!(Test-Path $Path -PathType Leaf)) {
+        Fail-Build "$Description not found: $Path"
+    }
+
+    $item = Get-Item $Path
+    if ($item.Length -le 0) {
+        Fail-Build "$Description is empty: $Path"
+    }
+}
+
+function Remove-DirectoryWithRetry {
+    param([string]$Path)
+
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        try {
+            if (Test-Path $Path) {
+                Remove-Item -Recurse -Force $Path -ErrorAction Stop
+            }
+            return
+        }
+        catch {
+            if ($attempt -eq 5) {
+                Write-Host "[WARN] Failed to remove temporary directory: $Path" -ForegroundColor Yellow
+                return
+            }
+
+            Start-Sleep -Milliseconds 200
+        }
+    }
+}
+
+function Test-IsAdministrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Invoke-PublishSelfCheck {
+    param(
+        [string]$OutputDir,
+        [string]$Version,
+        [string]$ZipPath
+    )
+
+    Write-Host ""
+    Write-Host "Running publish self-check..." -ForegroundColor Yellow
+
+    if (!(Test-Path $OutputDir -PathType Container)) {
+        Fail-Build "Output directory not found: $OutputDir"
+    }
+
+    $exePath = Join-Path $OutputDir "BGIguard.exe"
+    $readmePath = Join-Path $OutputDir "README.md"
+    $specPath = Join-Path $OutputDir "SPEC.md"
+    Assert-FileExists $exePath "Published executable"
+    Assert-FileExists $readmePath "README"
+    Assert-FileExists $specPath "SPEC"
+
+    if (Test-Path (Join-Path $OutputDir "BGIguard_config.json")) {
+        Fail-Build "Publish output should not contain BGIguard_config.json"
+    }
+
+    if (Get-ChildItem $OutputDir -Filter "BGI_guard*.log" -ErrorAction SilentlyContinue) {
+        Fail-Build "Publish output should not contain log files"
+    }
+
+    if (Test-IsAdministrator) {
+        $smokeDir = Join-Path ([System.IO.Path]::GetTempPath()) ("BGIguard.PublishSmoke." + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $smokeDir | Out-Null
+        try {
+            Copy-Item "$OutputDir\*" "$smokeDir\" -Recurse -Force
+            $smokeExe = Join-Path $smokeDir "BGIguard.exe"
+            $helpOutput = & $smokeExe help 2>&1
+
+            if ($LASTEXITCODE -ne 0) {
+                Fail-Build "Help smoke test failed with exit code $LASTEXITCODE"
+            }
+
+            $helpText = $helpOutput -join "`n"
+            if ($helpText -notmatch "BGIguard") {
+                Fail-Build "Help smoke test output did not contain expected text"
+            }
+
+            if (Test-Path (Join-Path $smokeDir "BGIguard_config.json")) {
+                Fail-Build "Help smoke test unexpectedly created BGIguard_config.json"
+            }
+
+            if (Get-ChildItem $smokeDir -Filter "BGI_guard*.log" -ErrorAction SilentlyContinue) {
+                Fail-Build "Help smoke test unexpectedly created log files"
+            }
+        }
+        finally {
+            Remove-DirectoryWithRetry $smokeDir
+        }
+    }
+    else {
+        Write-Host "Help smoke test skipped because BGIguard.exe requires administrator privileges" -ForegroundColor Yellow
+    }
+
+    Assert-FileExists $ZipPath "ZIP archive"
+
+    $zipCheckDir = Join-Path ([System.IO.Path]::GetTempPath()) ("BGIguard.ZipCheck." + [Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $zipCheckDir | Out-Null
+    try {
+        Expand-Archive -Path $ZipPath -DestinationPath $zipCheckDir -Force
+        Assert-FileExists (Join-Path $zipCheckDir "BGIguard.exe") "ZIP executable"
+        Assert-FileExists (Join-Path $zipCheckDir "README.md") "ZIP README"
+        Assert-FileExists (Join-Path $zipCheckDir "SPEC.md") "ZIP SPEC"
+
+        if (Test-Path (Join-Path $zipCheckDir "BGIguard_config.json")) {
+            Fail-Build "ZIP archive should not contain BGIguard_config.json"
+        }
+
+        if (Get-ChildItem $zipCheckDir -Filter "BGI_guard*.log" -ErrorAction SilentlyContinue) {
+            Fail-Build "ZIP archive should not contain log files"
+        }
+
+        if (Test-Path (Join-Path $zipCheckDir (Split-Path $ZipPath -Leaf))) {
+            Fail-Build "ZIP archive should not contain itself"
+        }
+    }
+    finally {
+        Remove-DirectoryWithRetry $zipCheckDir
+    }
+
+    Write-Host "Publish self-check passed" -ForegroundColor Green
+}
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "BGIguard Build Script v$Version" -ForegroundColor Cyan
@@ -41,9 +184,7 @@ Write-Host "Building solution..." -ForegroundColor Yellow
 dotnet build $SOLUTION -c $CONFIG
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Host ""
-    Write-Host "[ERROR] Build failed!" -ForegroundColor Red
-    exit 1
+    Fail-Build "Build failed!"
 }
 
 Write-Host ""
@@ -51,9 +192,7 @@ Write-Host "Running tests..." -ForegroundColor Yellow
 dotnet test $SOLUTION -c $CONFIG --no-build
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Host ""
-    Write-Host "[ERROR] Tests failed!" -ForegroundColor Red
-    exit 1
+    Fail-Build "Tests failed!"
 }
 
 # Publish project (single file)
@@ -76,9 +215,7 @@ $publishArgs = @(
 dotnet @publishArgs
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Host ""
-    Write-Host "[ERROR] Publish failed!" -ForegroundColor Red
-    exit 1
+    Fail-Build "Publish failed!"
 }
 
 # Delete bin directory
@@ -111,8 +248,20 @@ if (Test-Path $zipPath) {
     Remove-Item $zipPath -Force
 }
 
-Compress-Archive -Path "$OutputDir\*" -DestinationPath $zipPath -Force
+try {
+    Compress-Archive -Path "$OutputDir\*" -DestinationPath $zipPath -Force
+}
+catch {
+    Fail-Build "ZIP archive creation failed: $($_.Exception.Message)"
+}
 Write-Host "Created: ./$OutputDir/$zipName" -ForegroundColor Green
+
+if (!$SkipSelfCheck) {
+    Invoke-PublishSelfCheck -OutputDir $OutputDir -Version $Version -ZipPath $zipPath
+}
+else {
+    Write-Host "Publish self-check skipped" -ForegroundColor Yellow
+}
 
 # Update version in project files
 Write-Host ""
