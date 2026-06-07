@@ -8,6 +8,7 @@ BetterGI 进程守护程序。
 
 - 自动监控 `BetterGI.exe` 进程运行状态。
 - 进程退出时自动重启，启动方式保留 `cmd /c start`，并过滤启动参数中的高风险 cmd 字符。
+- 多种重启触发共用 60 秒冷却保护，避免异常持续时频繁重启 BetterGI。
 - 监控系统内存占用，超过阈值时重启 BetterGI。
 - 监控 BetterGI 进程独占内存，超过阈值时重启 BetterGI。
 - 检测 `YuanShen.exe` / `GenshinImpact.exe` 游戏进程。
@@ -15,6 +16,7 @@ BetterGI 进程守护程序。
 - 单实例保护，防止重复运行守护进程。
 - JSON 配置文件支持运行时热加载。
 - 日志按日滚动，并自动清理旧日志。
+- 支持 Ctrl+C 优雅退出守护循环。
 
 ## 使用方法
 
@@ -56,6 +58,7 @@ BGIguard.exe help                  # 显示帮助
 
 ```json
 {
+  "Version": 1,
   "BetterGiPath": "D:\\Games\\BetterGI\\BetterGI.exe",
   "MemoryPercent": 85,
   "MonitorInterval": 5,
@@ -65,7 +68,7 @@ BGIguard.exe help                  # 显示帮助
 }
 ```
 
-程序会检测配置文件更新时间，运行中手动修改配置后会在后续监控循环中生效。
+程序会检测配置文件更新时间，运行中手动修改配置后会在后续监控循环中生效。`Version` 是配置文件格式版本，旧配置缺少该字段时仍可正常读取，后续保存时会自动写入。
 
 ## 日志
 
@@ -99,6 +102,7 @@ BGI_guardYYYYMMDD.log
 | `src/BGIguard/MemoryMonitor.cs` | 读取系统内存、物理内存和虚拟内存占用。 |
 | `src/BGIguard/CurrentUserService.cs` | 读取当前用户 SID 和显示名，用于多用户进程隔离。 |
 | `src/BGIguard/AppLogger.cs` | 当前日志实现，负责写入日志、控制台输出和旧日志清理。 |
+| `src/BGIguard/ProcessOperations.cs` | 定义进程操作薄边界，并把 Windows 进程 API 调用适配到 `ProcessService`。 |
 
 ### 命令行与配置规则
 
@@ -123,7 +127,7 @@ BGI_guardYYYYMMDD.log
 | `BGIguard.sln` | Visual Studio / dotnet 解决方案文件。 |
 | `src/BGIguard/app.manifest` | Windows 应用清单。 |
 | `src/BGIguard/Assets/icon.ico` | 应用图标。 |
-| `build.ps1` | 发布脚本，支持版本号、自包含发布和运行时参数。 |
+| `build.ps1` | 发布脚本，支持版本号、自包含发布、运行时参数和发布产物自检。 |
 | `clean.ps1` | 清理脚本。 |
 | `global.json` | 固定或约束 .NET SDK 版本。 |
 | `CHANGELOG.md` | 版本变更记录。 |
@@ -134,6 +138,8 @@ BGI_guardYYYYMMDD.log
 | 文件 | 作用 |
 | --- | --- |
 | `tests/BGIguard.Tests/BGIguard.Tests.csproj` | 测试项目文件。 |
+| `tests/BGIguard.Tests/AppLoggerTests.cs` | 日志写入、UTF-8 内容、旧日志清理和异常目录测试。 |
+| `tests/BGIguard.Tests/BetterGiRuntimeServiceTests.cs` | BetterGI 运行时启动缓存和重启流程测试。 |
 | `tests/BGIguard.Tests/ConfigServiceTests.cs` | 配置默认值、保存和读取测试。 |
 | `tests/BGIguard.Tests/PathServiceTests.cs` | 路径验证和 BetterGI 路径解析测试。 |
 | `tests/BGIguard.Tests/CommandLineArgumentsTests.cs` | 启动参数清理和过滤测试。 |
@@ -141,6 +147,7 @@ BGI_guardYYYYMMDD.log
 | `tests/BGIguard.Tests/GuardDecisionTests.cs` | 守护判断逻辑测试。 |
 | `tests/BGIguard.Tests/GuardRunnerTests.cs` | 守护循环单轮执行和关键分支测试。 |
 | `tests/BGIguard.Tests/ProcessServiceTests.cs` | 进程启动参数拼接和用户匹配测试。 |
+| `tests/BGIguard.Tests/RuntimeConfigProviderTests.cs` | 运行时配置热加载测试。 |
 | `tests/BGIguard.Tests/GlobalUsings.cs` | 测试项目全局 using。 |
 
 ## 构建
@@ -158,8 +165,16 @@ dotnet test BGIguard.sln -c Release --no-build
 .\build.ps1 -Version 5.0.0
 ```
 
+发布脚本会执行构建、测试、发布、ZIP 打包和产物自检。由于程序清单要求管理员权限，`help` 烟雾测试只会在管理员 PowerShell 中执行；非管理员环境会跳过该烟雾测试，但仍会检查 exe、文档、ZIP 内容，并确保配置文件和日志不会进入发布包。
+
 自包含发布：
 
 ```powershell
 .\build.ps1 -Version 5.0.0 -SelfContained -Runtime win-x64
+```
+
+如需跳过发布产物自检：
+
+```powershell
+.\build.ps1 -Version 5.0.0 -SkipSelfCheck
 ```
